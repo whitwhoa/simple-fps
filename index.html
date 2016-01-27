@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title></title>
+        <link rel="stylesheet" href="/css/custom.css" media="all"/>
+    </head>
+    <body>
+        <div id="blocker">
+            <div id="instructions">
+                <span style="font-size:40px">Basic WASD/Mouse Movement</span>
+                <br/>
+                <span style="font-size:30px">Click to start</span>
+                <br />
+                (W, A, S, D = Move, SPACE = Jump, MOUSE = Look around)
+            </div>
+        </div>
+
+
+
+
+        <script src="/libs/three.js"></script>
+        <script src="/libs/PointerLockControls.js"></script>
+        
+        
+        <script src="/src/verify_pointerlock.js"></script>
+        <script src="/src/TextureAnimator.js"></script>
+        <script>
+                var camera, 
+                    scene, 
+                    renderer,
+                    geometry,
+                    material,
+                    mesh,
+                    controls,
+                    blocker = document.getElementById( 'blocker' ),
+                    instructions = document.getElementById( 'instructions' ),
+                    controlsEnabled = false,
+                    moveForward = false,
+                    moveBackward = false,
+                    moveLeft = false,
+                    moveRight = false,
+                    canJump = false,
+                    prevTime = performance.now(),
+                    velocity = new THREE.Vector3(),
+                    clock = new THREE.Clock();
+
+
+
+                camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
+
+                scene = new THREE.Scene();
+                scene.fog = new THREE.Fog(0xffffff, 0, 750);
+
+                var light = new THREE.HemisphereLight(0xeeeeff, 0x777788, 0.75);
+                light.position.set(0.5, 1, 0.75);
+                scene.add(light);
+
+                controls = new THREE.PointerLockControls(camera);
+                scene.add(controls.getObject());
+
+
+                //FLOOR
+                geometry = new THREE.PlaneGeometry( 2000, 2000, 100, 100 );
+                geometry.rotateX( - Math.PI / 2 );
+                for (var i = 0, l = geometry.vertices.length; i < l; i ++) {
+                        var vertex = geometry.vertices[ i ];
+                        vertex.x += Math.random() * 20 - 10;
+                        vertex.y += Math.random() * 2;
+                        vertex.z += Math.random() * 20 - 10;
+                }
+                for (var i = 0, l = geometry.faces.length; i < l; i ++) {
+                        var face = geometry.faces[ i ];
+                        face.vertexColors[ 0 ] = new THREE.Color().setHSL( Math.random() * 0.3 + 0.5, 0.75, Math.random() * 0.25 + 0.75 );
+                        face.vertexColors[ 1 ] = new THREE.Color().setHSL( Math.random() * 0.3 + 0.5, 0.75, Math.random() * 0.25 + 0.75 );
+                        face.vertexColors[ 2 ] = new THREE.Color().setHSL( Math.random() * 0.3 + 0.5, 0.75, Math.random() * 0.25 + 0.75 );
+                }
+                material = new THREE.MeshBasicMaterial({vertexColors: THREE.VertexColors});
+                mesh = new THREE.Mesh(geometry, material);
+                scene.add(mesh);
+                //END FLOOR
+
+
+                
+                var players = [];                
+                function add_player(x,y,z){
+                    
+                    var i = players.length;
+                    
+                    players.push({id:'player_' + i});
+                    
+                    players[i].textures = {
+                        s:new THREE.ImageUtils.loadTexture('/assets/textures/' + players[i].id + '/s.png'),
+                        se:new THREE.ImageUtils.loadTexture('/assets/textures/' + players[i].id + '/se.png'),
+                        e:new THREE.ImageUtils.loadTexture('/assets/textures/' + players[i].id + '/e.png'),
+                        ne:new THREE.ImageUtils.loadTexture('/assets/textures/' + players[i].id + '/ne.png'),
+                        n:new THREE.ImageUtils.loadTexture('/assets/textures/' + players[i].id + '/n.png'),
+                        nw:new THREE.ImageUtils.loadTexture('/assets/textures/' + players[i].id + '/nw.png'),
+                        w:new THREE.ImageUtils.loadTexture('/assets/textures/' + players[i].id + '/w.png'),
+                        sw:new THREE.ImageUtils.loadTexture('/assets/textures/' + players[i].id + '/sw.png')
+                    };
+                    
+                    players[i].animations = {
+                        s:new TextureAnimator(players[i].textures.s, 4, 1, 4, 160),
+                        se:new TextureAnimator(players[i].textures.se, 4, 1, 4, 160),
+                        e:new TextureAnimator(players[i].textures.e, 4, 1, 4, 160),
+                        ne:new TextureAnimator(players[i].textures.ne, 4, 1, 4, 160),
+                        n:new TextureAnimator(players[i].textures.n, 4, 1, 4, 160),
+                        nw:new TextureAnimator(players[i].textures.nw, 4, 1, 4, 160),
+                        w:new TextureAnimator(players[i].textures.w, 4, 1, 4, 160),
+                        sw:new TextureAnimator(players[i].textures.sw, 4, 1, 4, 160)
+                    };
+                    
+                    players[i].billboard_mat = new THREE.MeshBasicMaterial({map: players[i].textures.n,  transparent:true});
+                    players[i].billboard_geom = new THREE.PlaneGeometry(14, 14, 1, 1);
+                    players[i].billboard = new THREE.Mesh(players[i].billboard_geom, players[i].billboard_mat);
+                    
+                    players[i].material = new THREE.MeshBasicMaterial({transparent:true, opacity:0.0});
+                    players[i].geometry = new THREE.PlaneGeometry(14, 14, 1, 1);
+                    players[i].mesh = new THREE.Mesh(players[i].geometry, players[i].material);
+                    
+                    players[i].billboard.position.set(x,y,z);
+                    scene.add(players[i].billboard);
+
+                    players[i].mesh.position.set(x,y,z);
+                    scene.add(players[i].mesh);
+                    
+                }
+                
+
+                add_player(-100,10,0);
+                //add_player(-200,10,100);
+
+                
+                renderer = new THREE.WebGLRenderer();
+                renderer.setClearColor(0xffffff);
+                renderer.setPixelRatio(window.devicePixelRatio);
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                document.body.appendChild(renderer.domElement);                
+                
+                
+                animate();
+                
+                
+                function animate() {
+                    
+                    var delta = 1000 * clock.getDelta();
+                    
+                    //find the position each player is facing relative to
+                    //the current player camera position and display the 
+                    //correct texture on the player billboard, animate texture
+                    for(var i = 0; i < players.length; i++){
+                        
+                        var a = new THREE.Vector3();
+                        a.subVectors(controls.getObject().position, players[i].mesh.position);
+                        a.normalize();
+                        
+                        var b = new THREE.Vector3(0,0,1);
+                        b.applyQuaternion(players[i].mesh.quaternion);
+                        b.normalize();
+                        
+                        var theta = Math.acos(a.dot(b)) * (180/Math.PI);
+                        if(a.x * a.z < 0){
+                            theta = 360.0 - theta;
+                        }
+                        
+                        if((theta > 0 && theta <= 22.5) || (theta > 337.5 && theta <= 359.99)){//south
+                            players[i].billboard.material.map = players[i].textures.s;
+                            players[i].billboard.needsUpdate = true;
+                            players[i].animations.s.update(delta);
+                        }
+                        else if(theta > 292.5 && theta <= 337.5){//south east
+                            players[i].billboard.material.map = players[i].textures.se;
+                            players[i].billboard.needsUpdate = true;
+                            players[i].animations.se.update(delta);
+                        }
+                        else if((theta < 292.5 && theta >= 270) || (theta > 90 && theta <= 112.5)){//east
+                            players[i].billboard.material.map = players[i].textures.e;
+                            players[i].billboard.needsUpdate = true;
+                            players[i].animations.e.update(delta);
+                        }
+                        else if(theta > 112.5 && theta <= 157.5){//northeast
+                            players[i].billboard.material.map = players[i].textures.ne;
+                            players[i].billboard.needsUpdate = true;
+                            players[i].animations.ne.update(delta);
+                        }
+                        else if(theta > 157.5 && theta <= 202.5){//north
+                            players[i].billboard.material.map = players[i].textures.n;
+                            players[i].billboard.needsUpdate = true;
+                            players[i].animations.n.update(delta);
+                        }
+                        else if(theta > 202.5 && theta <= 247.5){//northwest
+                            players[i].billboard.material.map = players[i].textures.nw;
+                            players[i].billboard.needsUpdate = true;
+                            players[i].animations.nw.update(delta);
+                        }
+                        else if((theta > 67.5 && theta <= 89.99) || (theta > 247.5 && theta <= 269.99)){//west
+                            players[i].billboard.material.map = players[i].textures.w;
+                            players[i].billboard.needsUpdate = true;
+                            players[i].animations.w.update(delta);
+                        }
+                        else if(theta > 22.5 && theta <= 67.5){//southwest
+                            players[i].billboard.material.map = players[i].textures.sw;
+                            players[i].billboard.needsUpdate = true;
+                            players[i].animations.sw.update(delta);
+                        }
+
+                        players[i].billboard.lookAt(controls.getObject().position);
+                        
+                    }
+                    
+                    
+                    requestAnimationFrame(animate);
+                    if (controlsEnabled) {
+                        
+                        var time = performance.now();
+                        var delta = ( time - prevTime ) / 1000;
+
+                        velocity.x -= velocity.x * 10.0 * delta;
+                        velocity.z -= velocity.z * 10.0 * delta;
+                        velocity.y -= 9.8 * 100.0 * delta; // 100.0 = mass
+
+                        if ( moveForward ) velocity.z -= 400.0 * delta;
+                        if ( moveBackward ) velocity.z += 400.0 * delta;
+                        if ( moveLeft ) velocity.x -= 400.0 * delta;
+                        if ( moveRight ) velocity.x += 400.0 * delta;
+
+                        controls.getObject().translateX( velocity.x * delta );
+                        controls.getObject().translateY( velocity.y * delta );
+                        controls.getObject().translateZ( velocity.z * delta );
+
+                        if ( controls.getObject().position.y < 10 ) {
+                                velocity.y = 0;
+                                controls.getObject().position.y = 10;
+                                canJump = true;
+                        }
+
+                        prevTime = time;
+                            
+                    }
+
+                    renderer.render(scene, camera);
+
+                }
+                
+                
+                //keydown event
+                document.addEventListener('keydown', function(event){
+                    switch (event.keyCode){
+                        case 38: // up
+                        case 87: // w
+                                moveForward = true;
+                                break;
+                        case 37: // left
+                        case 65: // a
+                                moveLeft = true; break;
+                        case 40: // down
+                        case 83: // s
+                                moveBackward = true;
+                                break;
+                        case 39: // right
+                        case 68: // d
+                                moveRight = true;
+                                break;
+                        case 32: // space
+                                if ( canJump === true ) velocity.y += 350;
+                                canJump = false;
+                                break;                                    
+                        }
+                }, false);
+
+                //keyup event
+                document.addEventListener('keyup', function(event){
+                    switch(event.keyCode) {
+                        case 38: // up
+                        case 87: // w
+                                moveForward = false;
+                                break;
+                        case 37: // left
+                        case 65: // a
+                                moveLeft = false;
+                                break;
+                        case 40: // down
+                        case 83: // s
+                                moveBackward = false;
+                                break;
+                        case 39: // right
+                        case 68: // d
+                                moveRight = false;
+                                break;
+                        }
+                }, false);
+                
+                //Window resize event
+                window.addEventListener('resize', function(){
+                    camera.aspect = window.innerWidth / window.innerHeight;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(window.innerWidth, window.innerHeight);
+                }, false );
+                
+        </script>
+    </body>
+</html>
