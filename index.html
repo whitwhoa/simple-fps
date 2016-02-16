@@ -25,6 +25,182 @@
         
         <script src="/src/verify_pointerlock.js"></script>
         <script src="/src/TextureAnimator.js"></script>
+<script>
+// =============================================================================
+//  The Client.
+// =============================================================================
+var Client = function(){
+  
+    this.id = null;
+    
+    this.key_left = false;
+    this.key_right = false;
+    this.key_up = false;
+    this.key_down = false;
+    this.jump = false;
+    
+    this.peers = new Object;
+    
+        
+};
+
+Client.prototype.processInputs = function(){
+    if (controlsEnabled) {
+
+        var time = performance.now();
+        var delta = ( time - prevTime ) / 1000;
+
+        velocity.x -= velocity.x * 10.0 * delta;
+        velocity.z -= velocity.z * 10.0 * delta;
+        velocity.y -= 9.8 * 100.0 * delta; // 100.0 = mass
+
+        if ( this.key_up ) velocity.z -= 400.0 * delta;
+        if ( this.key_down ) velocity.z += 400.0 * delta;
+        if ( this.key_left ) velocity.x -= 400.0 * delta;
+        if ( this.key_right ) velocity.x += 400.0 * delta;
+
+        controls.getObject().translateX( velocity.x * delta );
+        controls.getObject().translateY( velocity.y * delta );
+        controls.getObject().translateZ( velocity.z * delta );
+
+        if ( controls.getObject().position.y < 10 ) {
+                velocity.y = 0;
+                controls.getObject().position.y = 10;
+                this.jump = true;
+        }
+
+        prevTime = time;
+
+    }
+};
+
+// Find the position each player is facing relative to
+// the current player camera position and display the 
+// correct texture on the player billboard, animate texture
+Client.prototype.animatePeers = function(){
+    
+    var animation_speed = 1000 * clock.getDelta();
+    
+    for(var peer_id in this.peers){
+        
+        var peer = this.peers[peer_id];
+        
+        var a = new THREE.Vector3();
+        a.subVectors(controls.getObject().position, peer.mesh.position);
+        a.normalize();
+
+        var b = new THREE.Vector3(0,0,1);
+        b.applyQuaternion(peer.mesh.quaternion);
+        b.normalize();
+
+        var theta = Math.acos(a.dot(b)) * (180/Math.PI);
+        if(a.x * a.z < 0){
+            theta = 360.0 - theta;
+        }
+
+        if((theta > 0 && theta <= 22.5) || (theta > 337.5 && theta <= 359.99)){//south
+            peer.billboard.material.map = peer.textures.s;
+            peer.billboard.needsUpdate = true;
+            peer.animations.s.update(animation_speed);
+        }
+        else if(theta > 292.5 && theta <= 337.5){//south east
+            peer.billboard.material.map = peer.textures.se;
+            peer.billboard.needsUpdate = true;
+            peer.animations.se.update(animation_speed);
+        }
+        else if((theta < 292.5 && theta >= 270) || (theta > 90 && theta <= 112.5)){//east
+            peer.billboard.material.map = peer.textures.e;
+            peer.billboard.needsUpdate = true;
+            peer.animations.e.update(animation_speed);
+        }
+        else if(theta > 112.5 && theta <= 157.5){//northeast
+            peer.billboard.material.map = peer.textures.ne;
+            peer.billboard.needsUpdate = true;
+            peer.animations.ne.update(animation_speed);
+        }
+        else if(theta > 157.5 && theta <= 202.5){//north
+            peer.billboard.material.map = peer.textures.n;
+            peer.billboard.needsUpdate = true;
+            peer.animations.n.update(animation_speed);
+        }
+        else if(theta > 202.5 && theta <= 247.5){//northwest
+            peer.billboard.material.map = peer.textures.nw;
+            peer.billboard.needsUpdate = true;
+            peer.animations.nw.update(animation_speed);
+        }
+        else if((theta > 67.5 && theta <= 89.99) || (theta > 247.5 && theta <= 269.99)){//west
+            peer.billboard.material.map = peer.textures.w;
+            peer.billboard.needsUpdate = true;
+            peer.animations.w.update(animation_speed);
+        }
+        else if(theta > 22.5 && theta <= 67.5){//southwest
+            peer.billboard.material.map = peer.textures.sw;
+            peer.billboard.needsUpdate = true;
+            peer.animations.sw.update(animation_speed);
+        }
+
+        peer.billboard.lookAt(controls.getObject().position);
+
+    }
+};
+
+Client.prototype.addPeer = function(sent_peer){
+    var x = -100, y = 10, z = 0;
+    this.peers[sent_peer.id] = sent_peer;
+    var peer = this.peers[sent_peer.id];
+
+    peer.textures = {
+        s:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/s.png'),
+        se:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/se.png'),
+        e:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/e.png'),
+        ne:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/ne.png'),
+        n:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/n.png'),
+        nw:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/nw.png'),
+        w:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/w.png'),
+        sw:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/sw.png')
+    };
+
+    peer.animations = {
+        s:new TextureAnimator(peer.textures.s, 4, 1, 4, 160),
+        se:new TextureAnimator(peer.textures.se, 4, 1, 4, 160),
+        e:new TextureAnimator(peer.textures.e, 4, 1, 4, 160),
+        ne:new TextureAnimator(peer.textures.ne, 4, 1, 4, 160),
+        n:new TextureAnimator(peer.textures.n, 4, 1, 4, 160),
+        nw:new TextureAnimator(peer.textures.nw, 4, 1, 4, 160),
+        w:new TextureAnimator(peer.textures.w, 4, 1, 4, 160),
+        sw:new TextureAnimator(peer.textures.sw, 4, 1, 4, 160)
+    };
+
+    peer.billboard_mat = new THREE.MeshBasicMaterial({map: peer.textures.n,  transparent:true});
+    peer.billboard_geom = new THREE.PlaneGeometry(14, 14, 1, 1);
+    peer.billboard = new THREE.Mesh(peer.billboard_geom, peer.billboard_mat);
+
+    peer.material = new THREE.MeshBasicMaterial({transparent:true, opacity:0.0});
+    peer.geometry = new THREE.PlaneGeometry(14, 14, 1, 1);
+    peer.mesh = new THREE.Mesh(peer.geometry, peer.material);
+
+    peer.billboard.position.set(x,y,z);
+    scene.add(peer.billboard);
+
+    peer.mesh.position.set(x,y,z);
+    scene.add(peer.mesh);
+    
+};
+
+Client.prototype.update = function(){
+
+    this.animatePeers();
+    this.processInputs();
+
+};
+
+Client.prototype.render = function(){
+    
+    renderer.render(scene, camera);
+    
+};
+
+</script>
         <script>
                 var camera, 
                     scene, 
@@ -36,11 +212,6 @@
                     blocker = document.getElementById( 'blocker' ),
                     instructions = document.getElementById( 'instructions' ),
                     controlsEnabled = false,
-                    moveForward = false,
-                    moveBackward = false,
-                    moveLeft = false,
-                    moveRight = false,
-                    canJump = false,
                     prevTime = performance.now(),
                     velocity = new THREE.Vector3(),
                     clock = new THREE.Clock();
@@ -80,224 +251,34 @@
                 scene.add(mesh);
                 //END FLOOR
 
-
-                
-                var players = [];                
-                function add_player(x,y,z){
-                    
-                    var i = players.length;
-                    
-                    players.push({id:'player_' + i});
-                    
-                    players[i].textures = {
-                        s:new THREE.ImageUtils.loadTexture('/assets/textures/' + players[i].id + '/s.png'),
-                        se:new THREE.ImageUtils.loadTexture('/assets/textures/' + players[i].id + '/se.png'),
-                        e:new THREE.ImageUtils.loadTexture('/assets/textures/' + players[i].id + '/e.png'),
-                        ne:new THREE.ImageUtils.loadTexture('/assets/textures/' + players[i].id + '/ne.png'),
-                        n:new THREE.ImageUtils.loadTexture('/assets/textures/' + players[i].id + '/n.png'),
-                        nw:new THREE.ImageUtils.loadTexture('/assets/textures/' + players[i].id + '/nw.png'),
-                        w:new THREE.ImageUtils.loadTexture('/assets/textures/' + players[i].id + '/w.png'),
-                        sw:new THREE.ImageUtils.loadTexture('/assets/textures/' + players[i].id + '/sw.png')
-                    };
-                    
-                    players[i].animations = {
-                        s:new TextureAnimator(players[i].textures.s, 4, 1, 4, 160),
-                        se:new TextureAnimator(players[i].textures.se, 4, 1, 4, 160),
-                        e:new TextureAnimator(players[i].textures.e, 4, 1, 4, 160),
-                        ne:new TextureAnimator(players[i].textures.ne, 4, 1, 4, 160),
-                        n:new TextureAnimator(players[i].textures.n, 4, 1, 4, 160),
-                        nw:new TextureAnimator(players[i].textures.nw, 4, 1, 4, 160),
-                        w:new TextureAnimator(players[i].textures.w, 4, 1, 4, 160),
-                        sw:new TextureAnimator(players[i].textures.sw, 4, 1, 4, 160)
-                    };
-                    
-                    players[i].billboard_mat = new THREE.MeshBasicMaterial({map: players[i].textures.n,  transparent:true});
-                    players[i].billboard_geom = new THREE.PlaneGeometry(14, 14, 1, 1);
-                    players[i].billboard = new THREE.Mesh(players[i].billboard_geom, players[i].billboard_mat);
-                    
-                    players[i].material = new THREE.MeshBasicMaterial({transparent:true, opacity:0.0});
-                    players[i].geometry = new THREE.PlaneGeometry(14, 14, 1, 1);
-                    players[i].mesh = new THREE.Mesh(players[i].geometry, players[i].material);
-                    
-                    players[i].billboard.position.set(x,y,z);
-                    scene.add(players[i].billboard);
-
-                    players[i].mesh.position.set(x,y,z);
-                    scene.add(players[i].mesh);
-                    
-                }
-                
-
-                add_player(-100,10,0);
-                //add_player(-200,10,100);
-
-                
+                // Create renderer
                 renderer = new THREE.WebGLRenderer();
                 renderer.setClearColor(0xffffff);
                 renderer.setPixelRatio(window.devicePixelRatio);
                 renderer.setSize(window.innerWidth, window.innerHeight);
-                document.body.appendChild(renderer.domElement);                
+                document.body.appendChild(renderer.domElement);
                 
+
                 
-                animate();
+
+                var client = new Client();
+                client.addPeer({id:'test_id'});
                 
-                
-                function animate() {
+                mainLoop();
+                function mainLoop(){
                     
-                    var delta = 1000 * clock.getDelta();
+                    requestAnimationFrame(mainLoop);
+                    client.update();
+                    client.render();
                     
-                    //find the position each player is facing relative to
-                    //the current player camera position and display the 
-                    //correct texture on the player billboard, animate texture
-                    for(var i = 0; i < players.length; i++){
-                        
-                        var a = new THREE.Vector3();
-                        a.subVectors(controls.getObject().position, players[i].mesh.position);
-                        a.normalize();
-                        
-                        var b = new THREE.Vector3(0,0,1);
-                        b.applyQuaternion(players[i].mesh.quaternion);
-                        b.normalize();
-                        
-                        var theta = Math.acos(a.dot(b)) * (180/Math.PI);
-                        if(a.x * a.z < 0){
-                            theta = 360.0 - theta;
-                        }
-                        
-                        if((theta > 0 && theta <= 22.5) || (theta > 337.5 && theta <= 359.99)){//south
-                            players[i].billboard.material.map = players[i].textures.s;
-                            players[i].billboard.needsUpdate = true;
-                            players[i].animations.s.update(delta);
-                        }
-                        else if(theta > 292.5 && theta <= 337.5){//south east
-                            players[i].billboard.material.map = players[i].textures.se;
-                            players[i].billboard.needsUpdate = true;
-                            players[i].animations.se.update(delta);
-                        }
-                        else if((theta < 292.5 && theta >= 270) || (theta > 90 && theta <= 112.5)){//east
-                            players[i].billboard.material.map = players[i].textures.e;
-                            players[i].billboard.needsUpdate = true;
-                            players[i].animations.e.update(delta);
-                        }
-                        else if(theta > 112.5 && theta <= 157.5){//northeast
-                            players[i].billboard.material.map = players[i].textures.ne;
-                            players[i].billboard.needsUpdate = true;
-                            players[i].animations.ne.update(delta);
-                        }
-                        else if(theta > 157.5 && theta <= 202.5){//north
-                            players[i].billboard.material.map = players[i].textures.n;
-                            players[i].billboard.needsUpdate = true;
-                            players[i].animations.n.update(delta);
-                        }
-                        else if(theta > 202.5 && theta <= 247.5){//northwest
-                            players[i].billboard.material.map = players[i].textures.nw;
-                            players[i].billboard.needsUpdate = true;
-                            players[i].animations.nw.update(delta);
-                        }
-                        else if((theta > 67.5 && theta <= 89.99) || (theta > 247.5 && theta <= 269.99)){//west
-                            players[i].billboard.material.map = players[i].textures.w;
-                            players[i].billboard.needsUpdate = true;
-                            players[i].animations.w.update(delta);
-                        }
-                        else if(theta > 22.5 && theta <= 67.5){//southwest
-                            players[i].billboard.material.map = players[i].textures.sw;
-                            players[i].billboard.needsUpdate = true;
-                            players[i].animations.sw.update(delta);
-                        }
-
-                        players[i].billboard.lookAt(controls.getObject().position);
-                        
-                    }
-                    
-                    
-                    requestAnimationFrame(animate);
-                    if (controlsEnabled) {
-                        
-                        var time = performance.now();
-                        var delta = ( time - prevTime ) / 1000;
-
-                        velocity.x -= velocity.x * 10.0 * delta;
-                        velocity.z -= velocity.z * 10.0 * delta;
-                        velocity.y -= 9.8 * 100.0 * delta; // 100.0 = mass
-
-                        if ( moveForward ) velocity.z -= 400.0 * delta;
-                        if ( moveBackward ) velocity.z += 400.0 * delta;
-                        if ( moveLeft ) velocity.x -= 400.0 * delta;
-                        if ( moveRight ) velocity.x += 400.0 * delta;
-
-                        controls.getObject().translateX( velocity.x * delta );
-                        controls.getObject().translateY( velocity.y * delta );
-                        controls.getObject().translateZ( velocity.z * delta );
-
-                        if ( controls.getObject().position.y < 10 ) {
-                                velocity.y = 0;
-                                controls.getObject().position.y = 10;
-                                canJump = true;
-                        }
-
-                        prevTime = time;
-                            
-                    }
-
-                    renderer.render(scene, camera);
-
-                }
+                };                
                 
-                
-                //keydown event
-                document.addEventListener('keydown', function(event){
-                    switch (event.keyCode){
-                        case 38: // up
-                        case 87: // w
-                                moveForward = true;
-                                break;
-                        case 37: // left
-                        case 65: // a
-                                moveLeft = true; break;
-                        case 40: // down
-                        case 83: // s
-                                moveBackward = true;
-                                break;
-                        case 39: // right
-                        case 68: // d
-                                moveRight = true;
-                                break;
-                        case 32: // space
-                                if ( canJump === true ) velocity.y += 350;
-                                canJump = false;
-                                break;                                    
-                        }
-                }, false);
-
-                //keyup event
-                document.addEventListener('keyup', function(event){
-                    switch(event.keyCode) {
-                        case 38: // up
-                        case 87: // w
-                                moveForward = false;
-                                break;
-                        case 37: // left
-                        case 65: // a
-                                moveLeft = false;
-                                break;
-                        case 40: // down
-                        case 83: // s
-                                moveBackward = false;
-                                break;
-                        case 39: // right
-                        case 68: // d
-                                moveRight = false;
-                                break;
-                        }
-                }, false);
-                
-                //Window resize event
-                window.addEventListener('resize', function(){
-                    camera.aspect = window.innerWidth / window.innerHeight;
-                    camera.updateProjectionMatrix();
-                    renderer.setSize(window.innerWidth, window.innerHeight);
-                }, false );
                 
         </script>
-    </body>
+        
+
+<script src="/src/key_controls.js"></script>
+<script src="/src/window_resize.js"></script>
+        
+</body>
 </html>
