@@ -207,6 +207,18 @@ Client.prototype.updatePosition = function(netObj){
     
 };
 
+Client.prototype.disconnectPeer = function(id){
+    
+    var selectedObject = scene.getObjectByName(this.peers[id].billboard.name);
+    scene.remove(selectedObject);
+    
+    var selectedObject = scene.getObjectByName(this.peers[id].mesh.name);
+    scene.remove(selectedObject);
+    
+    delete(this.peers[id]);
+        
+};
+
 Client.prototype.update = function(){
 
     this.animatePeers();
@@ -315,6 +327,10 @@ Client.prototype.update = function(){
                 client.peers[id] = new Peer(netObj[id]);
             }
         }
+    });
+    
+    socket.on('player_disconnect', function(id){
+        client.disconnectPeer(id);
     });
     
 
