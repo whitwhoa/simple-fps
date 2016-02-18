@@ -2,14 +2,54 @@
 //  Peer object
 // =============================================================================
 var Peer = function() {
-  this.id = null;
-  this.last_processed_input = null;
+    this.id = null;
+    this.last_processed_input = null;
   
-  this.velocity = new THREE.Vector3();
-  this.obj = new THREE.Object3D();
+    this.velocity = new THREE.Vector3();
+    this.obj = new THREE.Object3D();
   
-  this.position_cache = [];
+    this.jump = false;
 
+};
+
+Peer.prototype.applyInput = function(input){
+    
+    var dt = .01; // set to client physics refresh rate
+    
+    // Apply quaternion and rotation
+    this.obj.quaternion.x = input.quat.x;
+    this.obj.quaternion.y = input.quat.y;
+    this.obj.quaternion.z = input.quat.z;
+    this.obj.quaternion.w = input.quat.w;
+    
+    this.obj.rotation.x = input.rot.x;
+    this.obj.rotation.y = input.rot.y;
+    this.obj.rotation.z = input.rot.z;
+    
+    
+    if(input.jump){
+        this.velocity.y += 350;
+        this.jump = false;
+    }
+    
+    this.velocity.x -= this.velocity.x * 10.0 * dt;
+    this.velocity.z -= this.velocity.z * 10.0 * dt;
+    this.velocity.y -= 9.8 * 100.0 * dt; // 100.0 = mass
+
+    if ( input.key_up ) this.velocity.z -= 400.0 * dt;
+    if ( input.key_down ) this.velocity.z += 400.0 * dt;
+    if ( input.key_left ) this.velocity.x -= 400.0 * dt;
+    if ( input.key_right ) this.velocity.x += 400.0 * dt;
+
+    this.obj.translateX( this.velocity.x * dt );
+    this.obj.translateY( this.velocity.y * dt );
+    this.obj.translateZ( this.velocity.z * dt );
+
+    if ( this.obj.position.y < 10 ) {
+        this.velocity.y = 0;
+        this.obj.position.y = 10;
+    }
+    
 };
 
 
@@ -17,14 +57,14 @@ var Peer = function() {
 //  Message queue.
 // =============================================================================
 var Queue = function() {
-  this.messages = [];
+  this.updates = [];
 };
 
 Queue.prototype.receive = function() {
-  for (var i = 0; i < this.messages.length; i++) {
-      var message = this.messages[i];
-      this.messages.splice(i, 1);
-      return message;
+  for (var i = 0; i < this.updates.length; i++) {
+      var update = this.updates[i];
+      this.updates.splice(i, 1);
+      return update;
   }
 };
 
@@ -50,36 +90,48 @@ Server.prototype.connect = function(peer_id) {
 };
 
 Server.prototype.update = function() {
-    //console.log(JSON.stringify(this.players));
-  this.processInputs();
-  io.sockets.emit('server_state', this.players);
+    
+    this.processInputs();
+    io.sockets.emit('server_state', server.buildPeersNetObject());
+    
+    //console.log(server.buildPeersNetObject());
+    
 };
 
 
 // Check whether this input seems to be valid (e.g. "make sense" according
 // to the physical rules of the World) simply return true for now
 Server.prototype.validateInput = function(input) { 
-  return true;
-};
-
-// Process all pending messages from clients.
-Server.prototype.processInputs = function() {
-  
-  while (true) {
-    var message = this.queue.receive();
     
-    if (!message) { 
-      break;
+    if(!this.peers[input.id]){
+        return false;
+    } else {
+        return true;
     }
     
-    // Update the state of the player, based on its input.
-    if (this.validateInput(message)) {
-      this.players[message.id].press_time = message.press_time;
-      this.players[message.id].applyInput(message);
-      this.players[message.id].last_processed_input = message.input_sequence_number;
-    }    
+};
+
+// Process all pending messages from peers.
+Server.prototype.processInputs = function() {
+  
+    while (true) {
+        
+        var update = this.queue.receive();
     
-  }
+        if (!update) { 
+          break;
+        }
+    
+        // Update the state of the peer, based on its input.
+        if (this.validateInput(update)) {
+
+            this.peers[update.id].applyInput(update);
+            this.peers[update.id].last_processed_input = update.input_sequence_number;
+      
+        }    
+    
+    }
+    
 };
 
 // Build the object for the given peer id that is to be sent across the network
@@ -91,7 +143,19 @@ Server.prototype.buildPeerNetObject = function(peer_id){
             x:this.peers[peer_id].obj.position.x,
             y:this.peers[peer_id].obj.position.y,
             z:this.peers[peer_id].obj.position.z
-        }
+        },
+        quat:{
+            x:this.peers[peer_id].obj.quaternion.x,
+            y:this.peers[peer_id].obj.quaternion.y,
+            z:this.peers[peer_id].obj.quaternion.z,
+            w:this.peers[peer_id].obj.quaternion.w
+        },
+        rot:{
+            x:this.peers[peer_id].obj.rotation.x,
+            y:this.peers[peer_id].obj.rotation.y,
+            z:this.peers[peer_id].obj.rotation.z
+        },
+        last_processed_input:this.peers[peer_id].last_processed_input
     };
     
 };
@@ -102,13 +166,26 @@ Server.prototype.buildPeersNetObject = function(){
     var netObj = new Object;
     
     for(var id in this.peers){
+        //console.log(this.peers[id].obj);
         netObj[id] = {
             id:id,
             position:{
                 x:this.peers[id].obj.position.x,
                 y:this.peers[id].obj.position.y,
                 z:this.peers[id].obj.position.z
-            }
+            },
+            quat:{
+                x:this.peers[id].obj.quaternion.x,
+                y:this.peers[id].obj.quaternion.y,
+                z:this.peers[id].obj.quaternion.z,
+                w:this.peers[id].obj.quaternion.w
+            },
+            rot:{
+                x:this.peers[id].obj.rotation.x,
+                y:this.peers[id].obj.rotation.y,
+                z:this.peers[id].obj.rotation.z
+            },
+            last_processed_input:this.peers[id].last_processed_input
         };
     }
     
@@ -148,7 +225,8 @@ io.on('connection', function(socket){
    
    
    socket.on('client_input', function(input){
-       server.queue.messages.push(input);
+       //console.log(input);
+       server.queue.updates.push(input);
    });
    
    
@@ -156,6 +234,11 @@ io.on('connection', function(socket){
    
    socket.on('disconnect', function(){
        console.log('Client has disconnected');
+       
+       // Remove any queued inputs that are waiting to be processed
+       for(var key in server.queue.updates){
+           
+       }
        
        // Remove player from server
        delete(server.peers[socket.id]);

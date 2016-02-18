@@ -30,6 +30,25 @@
         <script src="/src/TextureAnimator.js"></script>
 <script>
 // =============================================================================
+//  Message queue.
+// =============================================================================
+var Queue = function() {
+    this.updates = [];
+};
+
+Queue.prototype.send = function(update) {
+    this.updates.push({recv_ts: +new Date(),payload:update});
+};
+
+Queue.prototype.receive = function() {
+  for (var i = 0; i < this.updates.length; i++) {
+      var update = this.updates[i];
+      this.updates.splice(i, 1);
+      return update;
+  }
+};
+
+// =============================================================================
 //  Peer object
 // =============================================================================
 var Peer = function(netObj) {
@@ -76,6 +95,26 @@ var Peer = function(netObj) {
 
 };
 
+Peer.prototype.updatePosition = function(netObj){
+    
+    this.billboard.position.x = netObj.position.x;
+    this.billboard.position.y = netObj.position.y;
+    this.billboard.position.z = netObj.position.z;
+    
+    this.mesh.position.x = netObj.position.x;
+    this.mesh.position.y = netObj.position.y;
+    this.mesh.position.z = netObj.position.z;
+    
+    
+    this.mesh.quaternion.set(netObj.quat.x, netObj.quat.y, netObj.quat.z, netObj.quat.w);
+
+    
+    this.mesh.rotation.x = netObj.rot.x;
+    this.mesh.rotation.y = netObj.rot.y;
+    this.mesh.rotation.z = netObj.rot.z;
+    
+};
+
 // =============================================================================
 //  The Client.
 // =============================================================================
@@ -89,41 +128,112 @@ var Client = function(){
     this.key_down = false;
     this.jump = false;
     
+    this.velocity = new THREE.Vector3();
+    
     this.peers = new Object;
+    
+    // Data needed for reconciliation.
+    this.input_sequence_number = 0;
+    this.pending_inputs = [];
+    
+    // Client message queue.
+    this.queue = new Queue();
     
         
 };
 
 Client.prototype.processInputs = function(){
-    if (controlsEnabled) {
-
-        velocity.x -= velocity.x * 10.0 * dt;
-        velocity.z -= velocity.z * 10.0 * dt;
-        velocity.y -= 9.8 * 100.0 * dt; // 100.0 = mass
-
-        if ( this.key_up ) velocity.z -= 400.0 * dt;
-        if ( this.key_down ) velocity.z += 400.0 * dt;
-        if ( this.key_left ) velocity.x -= 400.0 * dt;
-        if ( this.key_right ) velocity.x += 400.0 * dt;
-
-        controls.getObject().translateX( velocity.x * dt );
-        controls.getObject().translateY( velocity.y * dt );
-        controls.getObject().translateZ( velocity.z * dt );
-
-        if ( controls.getObject().position.y < 10 ) {
-                velocity.y = 0;
-                controls.getObject().position.y = 10;
-                this.jump = true;
-        }
-
+    
+    var input = new Object;
+    input.input_sequence_number = this.input_sequence_number++;
+    input.id = this.id;
+    
+    if(this.key_up){
+        input.key_up = true;
+    } else {
+        input.key_up = false;
     }
+    
+    if(this.key_down){
+        input.key_down = true;
+    } else {
+        input.key_down = false;
+    }
+    
+    if(this.key_left){
+        input.key_left = true;
+    } else {
+        input.key_left = false;
+    }
+    
+    if(this.key_right){
+        input.key_right = true;
+    } else {
+        input.key_right = false;
+    }
+    
+    if(this.jump && this.velocity.y === 0){
+        input.jump = true;
+    } else {
+        input.jump = false;
+    }
+    
+    // This may or may not be useful...
+    input.quat = {
+        x:controls.getObject().quaternion.x,
+        y:controls.getObject().quaternion.y,
+        z:controls.getObject().quaternion.z,
+        w:controls.getObject().quaternion.w
+    };
+    input.rot = {
+        x:controls.getObject().rotation.x,
+        y:controls.getObject().rotation.y,
+        z:controls.getObject().rotation.z
+    };
+    
+    // Send this input to the server for processing
+    socket.emit('client_input', input);
+    
+    // Do client-side prediction.
+    this.applyInput(input);
+    
+    // Save this input for later reconciliation.
+    this.pending_inputs.push(input);
+
+};
+
+Client.prototype.applyInput = function(input){
+  
+    if(input.jump){
+        this.velocity.y += 350;
+        this.jump = false;
+    }
+    
+    this.velocity.x -= this.velocity.x * 10.0 * dt;
+    this.velocity.z -= this.velocity.z * 10.0 * dt;
+    this.velocity.y -= 9.8 * 100.0 * dt; // 100.0 = mass
+
+    if ( input.key_up ) this.velocity.z -= 400.0 * dt;
+    if ( input.key_down ) this.velocity.z += 400.0 * dt;
+    if ( input.key_left ) this.velocity.x -= 400.0 * dt;
+    if ( input.key_right ) this.velocity.x += 400.0 * dt;
+
+    controls.getObject().translateX( this.velocity.x * dt );
+    controls.getObject().translateY( this.velocity.y * dt );
+    controls.getObject().translateZ( this.velocity.z * dt );
+
+    if ( controls.getObject().position.y < 10 ) {
+        this.velocity.y = 0;
+        controls.getObject().position.y = 10;
+    }
+        
 };
 
 // Find the position each player is facing relative to
 // the current player camera position and display the 
 // correct texture on the player billboard, animate texture
 Client.prototype.animatePeers = function(){
-    
+
     var animation_speed = 1000 * dt;
     
     for(var peer_id in this.peers){
@@ -219,10 +329,60 @@ Client.prototype.disconnectPeer = function(id){
         
 };
 
-Client.prototype.update = function(){
+Client.prototype.processServerUpdates = function(){
+    while(true){
+     
+        var update = this.queue.receive();
+        
+        if(!update){
+            break;
+        }
+        
+        for(var id in update.payload){
+            
+            var server_state = update.payload[id];
+            
+            if(id === this.id){ // This message pertains to the client object
+                
+                // Set user's current state equal to the state processed by the server
+                this.updatePosition(server_state);
+                
+                // Server Reconciliation. Re-apply all the inputs not yet processed by the server
+                var i = 0;
+                while(i < this.pending_inputs.length){
+                    
+                    var input = this.pending_inputs[i];
+                    if(input.input_sequence_number <= server_state.last_processed_input){
+                        
+                        // Already processed. Remove
+                        this.pending_inputs.splice(i, 1);
+                        
+                    } else {
+                        
+                        // Not processed by server yet. Re-apply.
+                        this.applyInput(input);
+                        i++;
+                        
+                    }
+                    
+                }
+                
+            } else { // This is a peer update
+                
+                this.peers[id].updatePosition(server_state);
+                
+            }
+            
+        }
+            
+    }        
+};
 
-    this.animatePeers();
+Client.prototype.update = function(){
+    
+    this.processServerUpdates();
     this.processInputs();
+    this.animatePeers();
 
 };
 
@@ -243,7 +403,6 @@ Client.prototype.update = function(){
         instructions = document.getElementById( 'instructions' ),
         controlsEnabled = false,
         prevTime = performance.now(),
-        velocity = new THREE.Vector3(),
         clock = new THREE.Clock();
 
     var t = 0.0;
@@ -333,6 +492,11 @@ Client.prototype.update = function(){
         client.disconnectPeer(id);
     });
     
+    socket.on('server_state', function(server_state){
+        //console.log(server_state);
+        client.queue.send(server_state);
+    });
+    
 
     function mainLoop(){  
         
@@ -383,11 +547,20 @@ Client.prototype.update = function(){
         //console.log('Pressed Enter...');
         //console.log(client.peers['test_id'].mesh.quaternion);
         //console.log(controls.getObject().position);
-        //console.log(controls.getObject().quaternion);
         //console.log(client.peers['test_id'].mesh.rotation);
         //console.log(controls.getObject().quaternion.w);
         
-        console.log(controls.getDirection());
+        //console.log(controls.getDirection());
+        
+//        console.log(controls.getObject().quaternion.x);
+//        console.log(controls.getObject().quaternion.y);
+//        console.log(controls.getObject().quaternion.z);
+//        console.log(controls.getObject().quaternion.w);
+
+        console.log(controls.getObject().rotation.x);
+        console.log(controls.getObject().rotation.y);
+        console.log(controls.getObject().rotation.z);
+
 
         
     }

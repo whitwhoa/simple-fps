@@ -18,8 +18,10 @@ document.addEventListener('keydown', function(event){
                 client.key_right = true;
                 break;
         case 32: // space
-                if ( client.jump === true ) velocity.y += 350;
-                client.jump = false;
+//                if ( client.jump === true ) velocity.y += 350;
+//                client.jump = false;
+//                break;
+                client.jump = true;
                 break;
             case 13:
                 testFunction();
