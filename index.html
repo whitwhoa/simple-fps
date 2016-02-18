@@ -4,6 +4,9 @@
         <meta charset="utf-8">
         <title></title>
         <link rel="stylesheet" href="/css/custom.css" media="all"/>
+        
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/1.3.7/socket.io.min.js"></script>
+        
     </head>
     <body>
         <div id="blocker">
@@ -47,29 +50,24 @@ var Client = function(){
 Client.prototype.processInputs = function(){
     if (controlsEnabled) {
 
-        var time = performance.now();
-        var delta = ( time - prevTime ) / 1000;
+        velocity.x -= velocity.x * 10.0 * dt;
+        velocity.z -= velocity.z * 10.0 * dt;
+        velocity.y -= 9.8 * 100.0 * dt; // 100.0 = mass
 
-        velocity.x -= velocity.x * 10.0 * delta;
-        velocity.z -= velocity.z * 10.0 * delta;
-        velocity.y -= 9.8 * 100.0 * delta; // 100.0 = mass
+        if ( this.key_up ) velocity.z -= 400.0 * dt;
+        if ( this.key_down ) velocity.z += 400.0 * dt;
+        if ( this.key_left ) velocity.x -= 400.0 * dt;
+        if ( this.key_right ) velocity.x += 400.0 * dt;
 
-        if ( this.key_up ) velocity.z -= 400.0 * delta;
-        if ( this.key_down ) velocity.z += 400.0 * delta;
-        if ( this.key_left ) velocity.x -= 400.0 * delta;
-        if ( this.key_right ) velocity.x += 400.0 * delta;
-
-        controls.getObject().translateX( velocity.x * delta );
-        controls.getObject().translateY( velocity.y * delta );
-        controls.getObject().translateZ( velocity.z * delta );
+        controls.getObject().translateX( velocity.x * dt );
+        controls.getObject().translateY( velocity.y * dt );
+        controls.getObject().translateZ( velocity.z * dt );
 
         if ( controls.getObject().position.y < 10 ) {
                 velocity.y = 0;
                 controls.getObject().position.y = 10;
                 this.jump = true;
         }
-
-        prevTime = time;
 
     }
 };
@@ -79,7 +77,7 @@ Client.prototype.processInputs = function(){
 // correct texture on the player billboard, animate texture
 Client.prototype.animatePeers = function(){
     
-    var animation_speed = 1000 * clock.getDelta();
+    var animation_speed = 1000 * dt;
     
     for(var peer_id in this.peers){
         
@@ -97,43 +95,53 @@ Client.prototype.animatePeers = function(){
         if(a.x * a.z < 0){
             theta = 360.0 - theta;
         }
-
+        
+        //console.log(theta);
+        
         if((theta > 0 && theta <= 22.5) || (theta > 337.5 && theta <= 359.99)){//south
+            peer.direction = 'south';
             peer.billboard.material.map = peer.textures.s;
             peer.billboard.needsUpdate = true;
             peer.animations.s.update(animation_speed);
         }
         else if(theta > 292.5 && theta <= 337.5){//south east
+            peer.direction = 'south east';
             peer.billboard.material.map = peer.textures.se;
             peer.billboard.needsUpdate = true;
             peer.animations.se.update(animation_speed);
         }
         else if((theta < 292.5 && theta >= 270) || (theta > 90 && theta <= 112.5)){//east
+            peer.direction = 'east';
             peer.billboard.material.map = peer.textures.e;
             peer.billboard.needsUpdate = true;
             peer.animations.e.update(animation_speed);
         }
         else if(theta > 112.5 && theta <= 157.5){//northeast
+            peer.direction = 'northeast';
             peer.billboard.material.map = peer.textures.ne;
             peer.billboard.needsUpdate = true;
             peer.animations.ne.update(animation_speed);
         }
         else if(theta > 157.5 && theta <= 202.5){//north
+            peer.direction = 'north';
             peer.billboard.material.map = peer.textures.n;
             peer.billboard.needsUpdate = true;
             peer.animations.n.update(animation_speed);
         }
         else if(theta > 202.5 && theta <= 247.5){//northwest
+            peer.direction = 'northwest';
             peer.billboard.material.map = peer.textures.nw;
             peer.billboard.needsUpdate = true;
             peer.animations.nw.update(animation_speed);
         }
         else if((theta > 67.5 && theta <= 89.99) || (theta > 247.5 && theta <= 269.99)){//west
+            peer.direction = 'west';
             peer.billboard.material.map = peer.textures.w;
             peer.billboard.needsUpdate = true;
             peer.animations.w.update(animation_speed);
         }
         else if(theta > 22.5 && theta <= 67.5){//southwest
+            peer.direction = 'southwest';
             peer.billboard.material.map = peer.textures.sw;
             peer.billboard.needsUpdate = true;
             peer.animations.sw.update(animation_speed);
@@ -187,6 +195,14 @@ Client.prototype.addPeer = function(sent_peer){
     
 };
 
+Client.prototype.updatePosition = function(netObj){
+    
+    controls.getObject().position.x = netObj.position.x;
+    controls.getObject().position.y = netObj.position.y;
+    controls.getObject().position.z = netObj.position.z;
+    
+};
+
 Client.prototype.update = function(){
 
     this.animatePeers();
@@ -194,87 +210,152 @@ Client.prototype.update = function(){
 
 };
 
-Client.prototype.render = function(){
-    
-    renderer.render(scene, camera);
-    
-};
-
 </script>
-        <script>
-                var camera, 
-                    scene, 
-                    renderer,
-                    geometry,
-                    material,
-                    mesh,
-                    controls,
-                    blocker = document.getElementById( 'blocker' ),
-                    instructions = document.getElementById( 'instructions' ),
-                    controlsEnabled = false,
-                    prevTime = performance.now(),
-                    velocity = new THREE.Vector3(),
-                    clock = new THREE.Clock();
+<script>
+    
+    // =============================================================================
+    //  Globals
+    // =============================================================================
+    var camera, 
+        scene, 
+        renderer,
+        geometry,
+        material,
+        mesh,
+        controls,
+        blocker = document.getElementById( 'blocker' ),
+        instructions = document.getElementById( 'instructions' ),
+        controlsEnabled = false,
+        prevTime = performance.now(),
+        velocity = new THREE.Vector3(),
+        clock = new THREE.Clock();
+
+    var t = 0.0;
+    var dt = 0.01;
+    var currentTime = (+new Date()) / 1000.0;
+    var accumulator = 0.0;
 
 
 
-                camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
+    camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
 
-                scene = new THREE.Scene();
-                scene.fog = new THREE.Fog(0xffffff, 0, 750);
+    scene = new THREE.Scene();
+    scene.fog = new THREE.Fog(0xffffff, 0, 750);
 
-                var light = new THREE.HemisphereLight(0xeeeeff, 0x777788, 0.75);
-                light.position.set(0.5, 1, 0.75);
-                scene.add(light);
+    var light = new THREE.HemisphereLight(0xeeeeff, 0x777788, 0.75);
+    light.position.set(0.5, 1, 0.75);
+    scene.add(light);
 
-                controls = new THREE.PointerLockControls(camera);
-                scene.add(controls.getObject());
+    controls = new THREE.PointerLockControls(camera);
+    scene.add(controls.getObject());
 
 
-                //FLOOR
-                geometry = new THREE.PlaneGeometry( 2000, 2000, 100, 100 );
-                geometry.rotateX( - Math.PI / 2 );
-                for (var i = 0, l = geometry.vertices.length; i < l; i ++) {
-                        var vertex = geometry.vertices[ i ];
-                        vertex.x += Math.random() * 20 - 10;
-                        vertex.y += Math.random() * 2;
-                        vertex.z += Math.random() * 20 - 10;
-                }
-                for (var i = 0, l = geometry.faces.length; i < l; i ++) {
-                        var face = geometry.faces[ i ];
-                        face.vertexColors[ 0 ] = new THREE.Color().setHSL( Math.random() * 0.3 + 0.5, 0.75, Math.random() * 0.25 + 0.75 );
-                        face.vertexColors[ 1 ] = new THREE.Color().setHSL( Math.random() * 0.3 + 0.5, 0.75, Math.random() * 0.25 + 0.75 );
-                        face.vertexColors[ 2 ] = new THREE.Color().setHSL( Math.random() * 0.3 + 0.5, 0.75, Math.random() * 0.25 + 0.75 );
-                }
-                material = new THREE.MeshBasicMaterial({vertexColors: THREE.VertexColors});
-                mesh = new THREE.Mesh(geometry, material);
-                scene.add(mesh);
-                //END FLOOR
+    //FLOOR
+    geometry = new THREE.PlaneGeometry( 2000, 2000, 100, 100 );
+    geometry.rotateX( - Math.PI / 2 );
+    for (var i = 0, l = geometry.vertices.length; i < l; i ++) {
+        var vertex = geometry.vertices[ i ];
+        vertex.x += Math.random() * 20 - 10;
+        vertex.y += Math.random() * 2;
+        vertex.z += Math.random() * 20 - 10;
+    }
+    for (var i = 0, l = geometry.faces.length; i < l; i ++) {
+        var face = geometry.faces[ i ];
+        face.vertexColors[ 0 ] = new THREE.Color().setHSL( Math.random() * 0.3 + 0.5, 0.75, Math.random() * 0.25 + 0.75 );
+        face.vertexColors[ 1 ] = new THREE.Color().setHSL( Math.random() * 0.3 + 0.5, 0.75, Math.random() * 0.25 + 0.75 );
+        face.vertexColors[ 2 ] = new THREE.Color().setHSL( Math.random() * 0.3 + 0.5, 0.75, Math.random() * 0.25 + 0.75 );
+    }
+    material = new THREE.MeshBasicMaterial({vertexColors: THREE.VertexColors});
+    mesh = new THREE.Mesh(geometry, material);
+    scene.add(mesh);
+    //END FLOOR
 
-                // Create renderer
-                renderer = new THREE.WebGLRenderer();
-                renderer.setClearColor(0xffffff);
-                renderer.setPixelRatio(window.devicePixelRatio);
-                renderer.setSize(window.innerWidth, window.innerHeight);
-                document.body.appendChild(renderer.domElement);
-                
+    // Create renderer
+    renderer = new THREE.WebGLRenderer();
+    renderer.setClearColor(0xffffff);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
 
-                
 
-                var client = new Client();
-                client.addPeer({id:'test_id'});
-                
-                mainLoop();
-                function mainLoop(){
-                    
-                    requestAnimationFrame(mainLoop);
-                    client.update();
-                    client.render();
-                    
-                };                
-                
-                
-        </script>
+
+
+    var client = new Client();
+    //client.addPeer({id:'test_id'});
+
+    var socket = io('http://local.three.js:3000');//change the domain to yours
+    
+    socket.on('successful_connection', function(netObj){
+        
+        client.id = netObj.id;
+        client.updatePosition(netObj);
+
+        // Run the main game loop as fast as we can
+        setInterval(function(){
+            mainLoop();
+        }, 0);
+
+    });
+    
+
+    function mainLoop(){  
+        
+        var newTime = (+new Date()) / 1000.0;
+        var frameTime = ((newTime - currentTime) > 0.25) ? 0.25 : (newTime - currentTime);
+        currentTime = newTime;
+
+        accumulator += frameTime;
+        while(accumulator >= dt){
+
+            client.update();
+
+            //this.previous_x = this.current_x;
+
+            t += dt;
+            accumulator -= dt;       
+
+        }
+
+        //var alpha = accumulator / dt;
+
+        // Interpolate position of client object
+        //this.render_x = this.lerp(this.current_x, this.previous_x, alpha); 
+        //this.render_x = this.current_x;
+
+        
+        renderer.render(scene, camera);
+        
+    }
+        
+
+
+    function testFunction(){
+        
+//        mesh = client.peers['test_id'].mesh;
+//        mesh_quat = mesh.quaternion;
+//        
+//        mesh.quaternion.set(0, mesh_quat.y + .05, 0, mesh_quat.w + .05);
+//        
+//        console.log(mesh_quat);
+        
+        //console.log(client.peers['test_id'].mesh.rotation.y);
+        //console.log(client.peers['test_id'].direction);
+        
+        //client.peers['test_id'].mesh.rotateY(.5);
+
+        
+        //console.log('Pressed Enter...');
+        //console.log(client.peers['test_id'].mesh.quaternion);
+        //console.log(controls.getObject().position);
+        //console.log(controls.getObject().quaternion);
+        //console.log(client.peers['test_id'].mesh.rotation);
+        //console.log(controls.getObject().quaternion.w);
+        
+        console.log(controls.getDirection());
+
+        
+    }
+</script>
         
 
 <script src="/src/key_controls.js"></script>

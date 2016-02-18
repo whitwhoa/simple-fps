@@ -20,7 +20,10 @@ document.addEventListener('keydown', function(event){
         case 32: // space
                 if ( client.jump === true ) velocity.y += 350;
                 client.jump = false;
-                break;                                    
+                break;
+            case 13:
+                testFunction();
+                break;
         }
 }, false);
 
