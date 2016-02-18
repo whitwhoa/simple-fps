@@ -11,11 +11,11 @@
     <body>
         <div id="blocker">
             <div id="instructions">
-                <span style="font-size:40px">Basic WASD/Mouse Movement</span>
+<!--                <span style="font-size:40px">Basic WASD/Mouse Movement</span>
                 <br/>
                 <span style="font-size:30px">Click to start</span>
                 <br />
-                (W, A, S, D = Move, SPACE = Jump, MOUSE = Look around)
+                (W, A, S, D = Move, SPACE = Jump, MOUSE = Look around)-->
             </div>
         </div>
 
@@ -29,6 +29,53 @@
         <script src="/src/verify_pointerlock.js"></script>
         <script src="/src/TextureAnimator.js"></script>
 <script>
+// =============================================================================
+//  Peer object
+// =============================================================================
+var Peer = function(netObj) {
+
+    this.textures = {
+        s:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/s.png'),
+        se:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/se.png'),
+        e:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/e.png'),
+        ne:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/ne.png'),
+        n:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/n.png'),
+        nw:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/nw.png'),
+        w:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/w.png'),
+        sw:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/sw.png')
+    };
+
+    this.animations = {
+        s:new TextureAnimator(this.textures.s, 4, 1, 4, 160),
+        se:new TextureAnimator(this.textures.se, 4, 1, 4, 160),
+        e:new TextureAnimator(this.textures.e, 4, 1, 4, 160),
+        ne:new TextureAnimator(this.textures.ne, 4, 1, 4, 160),
+        n:new TextureAnimator(this.textures.n, 4, 1, 4, 160),
+        nw:new TextureAnimator(this.textures.nw, 4, 1, 4, 160),
+        w:new TextureAnimator(this.textures.w, 4, 1, 4, 160),
+        sw:new TextureAnimator(this.textures.sw, 4, 1, 4, 160)
+    };
+
+    this.billboard_mat = new THREE.MeshBasicMaterial({map: this.textures.n,  transparent:true});
+    this.billboard_geom = new THREE.PlaneGeometry(14, 14, 1, 1);
+    this.billboard = new THREE.Mesh(this.billboard_geom, this.billboard_mat);
+    this.billboard.name = netObj.id + '_billboard';
+
+    this.material = new THREE.MeshBasicMaterial({transparent:true, opacity:0.0});
+    this.geometry = new THREE.PlaneGeometry(14, 14, 1, 1);
+    this.mesh = new THREE.Mesh(this.geometry, this.material);
+    this.mesh.name = netObj.id + '_mesh';
+
+    this.billboard.position.set(netObj.position.x,netObj.position.y,netObj.position.z);
+    scene.add(this.billboard);
+
+    this.mesh.position.set(netObj.position.x,netObj.position.y,netObj.position.z);
+    scene.add(this.mesh);
+    
+    this.direction = '';
+
+};
+
 // =============================================================================
 //  The Client.
 // =============================================================================
@@ -152,49 +199,6 @@ Client.prototype.animatePeers = function(){
     }
 };
 
-Client.prototype.addPeer = function(sent_peer){
-    var x = -100, y = 10, z = 0;
-    this.peers[sent_peer.id] = sent_peer;
-    var peer = this.peers[sent_peer.id];
-
-    peer.textures = {
-        s:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/s.png'),
-        se:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/se.png'),
-        e:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/e.png'),
-        ne:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/ne.png'),
-        n:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/n.png'),
-        nw:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/nw.png'),
-        w:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/w.png'),
-        sw:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/sw.png')
-    };
-
-    peer.animations = {
-        s:new TextureAnimator(peer.textures.s, 4, 1, 4, 160),
-        se:new TextureAnimator(peer.textures.se, 4, 1, 4, 160),
-        e:new TextureAnimator(peer.textures.e, 4, 1, 4, 160),
-        ne:new TextureAnimator(peer.textures.ne, 4, 1, 4, 160),
-        n:new TextureAnimator(peer.textures.n, 4, 1, 4, 160),
-        nw:new TextureAnimator(peer.textures.nw, 4, 1, 4, 160),
-        w:new TextureAnimator(peer.textures.w, 4, 1, 4, 160),
-        sw:new TextureAnimator(peer.textures.sw, 4, 1, 4, 160)
-    };
-
-    peer.billboard_mat = new THREE.MeshBasicMaterial({map: peer.textures.n,  transparent:true});
-    peer.billboard_geom = new THREE.PlaneGeometry(14, 14, 1, 1);
-    peer.billboard = new THREE.Mesh(peer.billboard_geom, peer.billboard_mat);
-
-    peer.material = new THREE.MeshBasicMaterial({transparent:true, opacity:0.0});
-    peer.geometry = new THREE.PlaneGeometry(14, 14, 1, 1);
-    peer.mesh = new THREE.Mesh(peer.geometry, peer.material);
-
-    peer.billboard.position.set(x,y,z);
-    scene.add(peer.billboard);
-
-    peer.mesh.position.set(x,y,z);
-    scene.add(peer.mesh);
-    
-};
-
 Client.prototype.updatePosition = function(netObj){
     
     controls.getObject().position.x = netObj.position.x;
@@ -295,6 +299,22 @@ Client.prototype.update = function(){
             mainLoop();
         }, 0);
 
+    });
+    
+    socket.on('new_player_connection', function(netObj){
+        if(netObj.id !== client.id){
+
+            client.peers[netObj.id] = new Peer(netObj);
+        
+        }
+    });
+    
+    socket.on('connected_players', function(netObj){
+        for(var id in netObj){
+            if(id !== client.id){
+                client.peers[id] = new Peer(netObj[id]);
+            }
+        }
     });
     
 
