@@ -17,15 +17,8 @@ Peer.prototype.applyInput = function(input){
     var dt = .01; // set to client physics refresh rate
     
     // Apply quaternion and rotation
-    this.obj.quaternion.x = input.quat.x;
-    this.obj.quaternion.y = input.quat.y;
-    this.obj.quaternion.z = input.quat.z;
-    this.obj.quaternion.w = input.quat.w;
-    
-    this.obj.rotation.x = input.rot.x;
-    this.obj.rotation.y = input.rot.y;
-    this.obj.rotation.z = input.rot.z;
-    
+    this.obj.quaternion.set(input.quat.x, input.quat.y, input.quat.z, input.quat.w);
+    this.obj.rotation.set(input.rot.x,input.rot.y,input.rot.z);    
     
     if(input.jump){
         this.velocity.y += 350;

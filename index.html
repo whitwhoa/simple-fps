@@ -79,11 +79,14 @@ var Peer = function(netObj) {
     this.billboard_geom = new THREE.PlaneGeometry(14, 14, 1, 1);
     this.billboard = new THREE.Mesh(this.billboard_geom, this.billboard_mat);
     this.billboard.name = netObj.id + '_billboard';
-
+    this.billboard.rotation.set(0,0,0);
+    
+    
     this.material = new THREE.MeshBasicMaterial({transparent:true, opacity:0.0});
     this.geometry = new THREE.PlaneGeometry(14, 14, 1, 1);
     this.mesh = new THREE.Mesh(this.geometry, this.material);
     this.mesh.name = netObj.id + '_mesh';
+    this.mesh.rotation.set(0,0,0);
 
     this.billboard.position.set(netObj.position.x,netObj.position.y,netObj.position.z);
     scene.add(this.billboard);
@@ -105,13 +108,9 @@ Peer.prototype.updatePosition = function(netObj){
     this.mesh.position.y = netObj.position.y;
     this.mesh.position.z = netObj.position.z;
     
-    
-    this.mesh.quaternion.set(netObj.quat.x, netObj.quat.y, netObj.quat.z, netObj.quat.w);
 
-    
-    this.mesh.rotation.x = netObj.rot.x;
-    this.mesh.rotation.y = netObj.rot.y;
-    this.mesh.rotation.z = netObj.rot.z;
+    this.mesh.quaternion.set(netObj.quat.x, netObj.quat.y, netObj.quat.z, netObj.quat.w);
+    this.mesh.quaternion.normalize();
     
 };
 
@@ -178,7 +177,6 @@ Client.prototype.processInputs = function(){
         input.jump = false;
     }
     
-    // This may or may not be useful...
     input.quat = {
         x:controls.getObject().quaternion.x,
         y:controls.getObject().quaternion.y,
@@ -240,68 +238,55 @@ Client.prototype.animatePeers = function(){
         
         var peer = this.peers[peer_id];
         
-        var a = new THREE.Vector3();
-        a.subVectors(controls.getObject().position, peer.mesh.position);
-        a.normalize();
+        var view = new THREE.Vector3();
+        view.subVectors(controls.getObject().position, peer.mesh.position);
 
-        var b = new THREE.Vector3(0,0,1);
-        b.applyQuaternion(peer.mesh.quaternion);
-        b.normalize();
+        var inverse = peer.mesh.quaternion.clone();
+        inverse.inverse();
 
-        var theta = Math.acos(a.dot(b)) * (180/Math.PI);
-        if(a.x * a.z < 0){
-            theta = 360.0 - theta;
-        }
-        
-        //console.log(theta);
-        
-        if((theta > 0 && theta <= 22.5) || (theta > 337.5 && theta <= 359.99)){//south
-            peer.direction = 'south';
-            peer.billboard.material.map = peer.textures.s;
-            peer.billboard.needsUpdate = true;
-            peer.animations.s.update(animation_speed);
-        }
-        else if(theta > 292.5 && theta <= 337.5){//south east
-            peer.direction = 'south east';
-            peer.billboard.material.map = peer.textures.se;
-            peer.billboard.needsUpdate = true;
-            peer.animations.se.update(animation_speed);
-        }
-        else if((theta < 292.5 && theta >= 270) || (theta > 90 && theta <= 112.5)){//east
-            peer.direction = 'east';
-            peer.billboard.material.map = peer.textures.e;
-            peer.billboard.needsUpdate = true;
-            peer.animations.e.update(animation_speed);
-        }
-        else if(theta > 112.5 && theta <= 157.5){//northeast
-            peer.direction = 'northeast';
-            peer.billboard.material.map = peer.textures.ne;
-            peer.billboard.needsUpdate = true;
-            peer.animations.ne.update(animation_speed);
-        }
-        else if(theta > 157.5 && theta <= 202.5){//north
-            peer.direction = 'north';
+        view.applyQuaternion(inverse);
+
+        var angle = Math.round(Math.atan2(view.x, view.z) * 4/Math.PI);
+
+        if(angle === 0 || angle === -0){// North
             peer.billboard.material.map = peer.textures.n;
             peer.billboard.needsUpdate = true;
             peer.animations.n.update(animation_speed);
         }
-        else if(theta > 202.5 && theta <= 247.5){//northwest
-            peer.direction = 'northwest';
+        else if(angle === -1){// Northwest
             peer.billboard.material.map = peer.textures.nw;
             peer.billboard.needsUpdate = true;
             peer.animations.nw.update(animation_speed);
         }
-        else if((theta > 67.5 && theta <= 89.99) || (theta > 247.5 && theta <= 269.99)){//west
-            peer.direction = 'west';
+        else if(angle === -2){// West
             peer.billboard.material.map = peer.textures.w;
             peer.billboard.needsUpdate = true;
             peer.animations.w.update(animation_speed);
         }
-        else if(theta > 22.5 && theta <= 67.5){//southwest
-            peer.direction = 'southwest';
+        else if(angle === -3){// Southwest
             peer.billboard.material.map = peer.textures.sw;
             peer.billboard.needsUpdate = true;
             peer.animations.sw.update(animation_speed);
+        }
+        else if(angle === 4 || angle === -4){// South
+            peer.billboard.material.map = peer.textures.s;
+            peer.billboard.needsUpdate = true;
+            peer.animations.s.update(animation_speed);
+        }
+        else if(angle === 3){// Southeast
+            peer.billboard.material.map = peer.textures.se;
+            peer.billboard.needsUpdate = true;
+            peer.animations.se.update(animation_speed);
+        }
+        else if(angle === 2){// East
+            peer.billboard.material.map = peer.textures.e;
+            peer.billboard.needsUpdate = true;
+            peer.animations.e.update(animation_speed);
+        }
+        else if(angle === 1){// Northeast
+            peer.billboard.material.map = peer.textures.ne;
+            peer.billboard.needsUpdate = true;
+            peer.animations.ne.update(animation_speed);
         }
 
         peer.billboard.lookAt(controls.getObject().position);
@@ -444,6 +429,7 @@ Client.prototype.update = function(){
     mesh = new THREE.Mesh(geometry, material);
     scene.add(mesh);
     //END FLOOR
+    
 
     // Create renderer
     renderer = new THREE.WebGLRenderer();
@@ -557,9 +543,17 @@ Client.prototype.update = function(){
 //        console.log(controls.getObject().quaternion.z);
 //        console.log(controls.getObject().quaternion.w);
 
-        console.log(controls.getObject().rotation.x);
-        console.log(controls.getObject().rotation.y);
-        console.log(controls.getObject().rotation.z);
+        //console.log(controls.getObject().rotation);
+//        console.log(controls.getObject().rotation.y);
+//        console.log(controls.getObject().rotation.z);
+
+        console.log(controls.getObject().quaternion);
+//        for(var id in client.peers){
+//            //console.log(client.peers[id].mesh.quaternion);
+//            console.log(client.peers[id].mesh);
+//        }
+        //console.log(theta);
+
 
 
         
