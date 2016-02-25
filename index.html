@@ -207,18 +207,18 @@ Client.prototype.applyInput = function(input){
         this.jump = false;
     }
     
-    this.velocity.x -= this.velocity.x * 10.0 * dt;
-    this.velocity.z -= this.velocity.z * 10.0 * dt;
-    this.velocity.y -= 9.8 * 100.0 * dt; // 100.0 = mass
+    this.velocity.x -= this.velocity.x * 10.0 * deltaTime;
+    this.velocity.z -= this.velocity.z * 10.0 * deltaTime;
+    this.velocity.y -= 9.8 * 100.0 * deltaTime; // 100.0 = mass
 
-    if ( input.key_up ) this.velocity.z -= 400.0 * dt;
-    if ( input.key_down ) this.velocity.z += 400.0 * dt;
-    if ( input.key_left ) this.velocity.x -= 400.0 * dt;
-    if ( input.key_right ) this.velocity.x += 400.0 * dt;
+    if ( input.key_up ) this.velocity.z -= 400.0 * deltaTime;
+    if ( input.key_down ) this.velocity.z += 400.0 * deltaTime;
+    if ( input.key_left ) this.velocity.x -= 400.0 * deltaTime;
+    if ( input.key_right ) this.velocity.x += 400.0 * deltaTime;
 
-    controls.getObject().translateX( this.velocity.x * dt );
-    controls.getObject().translateY( this.velocity.y * dt );
-    controls.getObject().translateZ( this.velocity.z * dt );
+    controls.getObject().translateX( this.velocity.x * deltaTime );
+    controls.getObject().translateY( this.velocity.y * deltaTime );
+    controls.getObject().translateZ( this.velocity.z * deltaTime );
 
     if ( controls.getObject().position.y < 10 ) {
         this.velocity.y = 0;
@@ -232,7 +232,7 @@ Client.prototype.applyInput = function(input){
 // correct texture on the player billboard, animate texture
 Client.prototype.animatePeers = function(){
 
-    var animation_speed = 1000 * dt;
+    var animation_speed = 1000 * deltaTime;
     
     for(var peer_id in this.peers){
         
@@ -378,57 +378,52 @@ Client.prototype.update = function(){
     //  Globals
     // =============================================================================
     var camera, 
-        scene, 
-        renderer,
-        geometry,
-        material,
-        mesh,
-        controls,
-        blocker = document.getElementById( 'blocker' ),
-        instructions = document.getElementById( 'instructions' ),
-        controlsEnabled = false,
-        prevTime = performance.now(),
-        clock = new THREE.Clock();
-
-    var t = 0.0;
-    var dt = 0.01;
-    var currentTime = (+new Date()) / 1000.0;
-    var accumulator = 0.0;
-
-
-
+    scene, 
+    renderer,
+    controls,
+    blocker = document.getElementById( 'blocker' ),
+    instructions = document.getElementById( 'instructions' ),
+    controlsEnabled = false,
+    runTime = 0.0,
+    deltaTime = 0.01,
+    currentTime = (+new Date()) / 1000.0,
+    accumulator = 0.0;
+    
+    // Create camera object: PerspectiveCamera( fov, aspect, near, far )
     camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
 
+    // Create scene object, add fog to scene: Fog( hex, near, far )
     scene = new THREE.Scene();
     scene.fog = new THREE.Fog(0xffffff, 0, 750);
 
+    // Create hemisphere light object, set it's position, add it to the scene: HemisphereLight(skyColorHex, groundColorHex, intensity)
     var light = new THREE.HemisphereLight(0xeeeeff, 0x777788, 0.75);
     light.position.set(0.5, 1, 0.75);
     scene.add(light);
-
+    
+    // Create the controls object, add it to the scene. This is the player object on the client.
     controls = new THREE.PointerLockControls(camera);
     scene.add(controls.getObject());
 
 
-    //FLOOR
-    geometry = new THREE.PlaneGeometry( 2000, 2000, 100, 100 );
-    geometry.rotateX( - Math.PI / 2 );
-    for (var i = 0, l = geometry.vertices.length; i < l; i ++) {
-        var vertex = geometry.vertices[ i ];
+    // Add floor to scene
+    var floor_geometry = new THREE.PlaneGeometry( 2000, 2000, 100, 100 );
+    floor_geometry.rotateX( - Math.PI / 2 );
+    for (var i = 0, l = floor_geometry.vertices.length; i < l; i ++) {
+        var vertex = floor_geometry.vertices[ i ];
         vertex.x += Math.random() * 20 - 10;
         vertex.y += Math.random() * 2;
         vertex.z += Math.random() * 20 - 10;
     }
-    for (var i = 0, l = geometry.faces.length; i < l; i ++) {
-        var face = geometry.faces[ i ];
+    for (var i = 0, l = floor_geometry.faces.length; i < l; i ++) {
+        var face = floor_geometry.faces[ i ];
         face.vertexColors[ 0 ] = new THREE.Color().setHSL( Math.random() * 0.3 + 0.5, 0.75, Math.random() * 0.25 + 0.75 );
         face.vertexColors[ 1 ] = new THREE.Color().setHSL( Math.random() * 0.3 + 0.5, 0.75, Math.random() * 0.25 + 0.75 );
         face.vertexColors[ 2 ] = new THREE.Color().setHSL( Math.random() * 0.3 + 0.5, 0.75, Math.random() * 0.25 + 0.75 );
     }
-    material = new THREE.MeshBasicMaterial({vertexColors: THREE.VertexColors});
-    mesh = new THREE.Mesh(geometry, material);
-    scene.add(mesh);
-    //END FLOOR
+    var floor_material = new THREE.MeshBasicMaterial({vertexColors: THREE.VertexColors});
+    var floor_mesh = new THREE.Mesh(floor_geometry, floor_material);
+    scene.add(floor_mesh);
     
 
     // Create renderer
@@ -439,11 +434,8 @@ Client.prototype.update = function(){
     document.body.appendChild(renderer.domElement);
 
 
-
-
+    // Create client, socket, and socket events
     var client = new Client();
-    //client.addPeer({id:'test_id'});
-
     var socket = io('http://local.three.js:3000');//change the domain to yours
     
     socket.on('successful_connection', function(netObj){
@@ -460,9 +452,7 @@ Client.prototype.update = function(){
     
     socket.on('new_player_connection', function(netObj){
         if(netObj.id !== client.id){
-
             client.peers[netObj.id] = new Peer(netObj);
-        
         }
     });
     
@@ -479,34 +469,33 @@ Client.prototype.update = function(){
     });
     
     socket.on('server_state', function(server_state){
-        //console.log(server_state);
         client.queue.send(server_state);
     });
     
-
+    // Main game loop
     function mainLoop(){  
         
         var newTime = (+new Date()) / 1000.0;
         var frameTime = ((newTime - currentTime) > 0.25) ? 0.25 : (newTime - currentTime);
         currentTime = newTime;
-
+        
+        // Physics/Game logic 
         accumulator += frameTime;
-        while(accumulator >= dt){
+        while(accumulator >= deltaTime){
 
             client.update();
 
-            //this.previous_x = this.current_x;
-
-            t += dt;
-            accumulator -= dt;       
+            runTime += deltaTime;
+            accumulator -= deltaTime;       
 
         }
-
-        //var alpha = accumulator / dt;
-
-        // Interpolate position of client object
-        //this.render_x = this.lerp(this.current_x, this.previous_x, alpha); 
-        //this.render_x = this.current_x;
+        
+        // Render stuff and such
+        
+        // Interpolate client object to remove the stuttering caused by
+        // unpredictable number of physics loops
+        
+        // Interpolate peer positions
 
         
         renderer.render(scene, camera);
@@ -514,47 +503,10 @@ Client.prototype.update = function(){
     }
         
 
-
+    // This function is used to test various things. It is run whenever the enter button
+    // is pressed
     function testFunction(){
         
-//        mesh = client.peers['test_id'].mesh;
-//        mesh_quat = mesh.quaternion;
-//        
-//        mesh.quaternion.set(0, mesh_quat.y + .05, 0, mesh_quat.w + .05);
-//        
-//        console.log(mesh_quat);
-        
-        //console.log(client.peers['test_id'].mesh.rotation.y);
-        //console.log(client.peers['test_id'].direction);
-        
-        //client.peers['test_id'].mesh.rotateY(.5);
-
-        
-        //console.log('Pressed Enter...');
-        //console.log(client.peers['test_id'].mesh.quaternion);
-        //console.log(controls.getObject().position);
-        //console.log(client.peers['test_id'].mesh.rotation);
-        //console.log(controls.getObject().quaternion.w);
-        
-        //console.log(controls.getDirection());
-        
-//        console.log(controls.getObject().quaternion.x);
-//        console.log(controls.getObject().quaternion.y);
-//        console.log(controls.getObject().quaternion.z);
-//        console.log(controls.getObject().quaternion.w);
-
-        //console.log(controls.getObject().rotation);
-//        console.log(controls.getObject().rotation.y);
-//        console.log(controls.getObject().rotation.z);
-
-        console.log(controls.getObject().quaternion);
-//        for(var id in client.peers){
-//            //console.log(client.peers[id].mesh.quaternion);
-//            console.log(client.peers[id].mesh);
-//        }
-        //console.log(theta);
-
-
 
         
     }
