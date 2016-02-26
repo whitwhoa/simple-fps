@@ -3,29 +3,28 @@
     <head>
         <meta charset="utf-8">
         <title></title>
-        <link rel="stylesheet" href="/css/custom.css" media="all"/>
+        <link rel="stylesheet" href="./css/custom.css" media="all"/>
         
         <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/1.3.7/socket.io.min.js"></script>
         
     </head>
     <body>
+        
+        <!-- Pointer lock message -->
         <div id="blocker">
             <div id="instructions">
-<!--                <span style="font-size:40px">Basic WASD/Mouse Movement</span>
+                <span style="font-size:40px">Basic WASD/Mouse Movement</span>
                 <br/>
                 <span style="font-size:30px">Click to start</span>
                 <br />
-                (W, A, S, D = Move, SPACE = Jump, MOUSE = Look around)-->
+                (W, A, S, D = Move, SPACE = Jump, MOUSE = Look around)
             </div>
         </div>
-
-
-
-
-        <script src="/libs/three.js"></script>
-        <script src="/libs/PointerLockControls.js"></script>
-        <script src="/libs/TextureAnimator.js"></script>
         
+        <!-- Include dependencies -->
+        <script src="./libs/three.js"></script>
+        <script src="./libs/PointerLockControls.js"></script>
+        <script src="./libs/TextureAnimator.js"></script> 
         
         
         
@@ -52,17 +51,17 @@ Queue.prototype.receive = function() {
 // =============================================================================
 //  Peer object
 // =============================================================================
-var Peer = function(netObj) {
+var Peer = function(scene, netObj) {
 
     this.textures = {
-        s:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/s.png'),
-        se:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/se.png'),
-        e:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/e.png'),
-        ne:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/ne.png'),
-        n:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/n.png'),
-        nw:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/nw.png'),
-        w:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/w.png'),
-        sw:new THREE.ImageUtils.loadTexture('/assets/textures/player_0/sw.png')
+        s:new THREE.ImageUtils.loadTexture('./assets/textures/player_0/s.png'),
+        se:new THREE.ImageUtils.loadTexture('./assets/textures/player_0/se.png'),
+        e:new THREE.ImageUtils.loadTexture('./assets/textures/player_0/e.png'),
+        ne:new THREE.ImageUtils.loadTexture('./assets/textures/player_0/ne.png'),
+        n:new THREE.ImageUtils.loadTexture('./assets/textures/player_0/n.png'),
+        nw:new THREE.ImageUtils.loadTexture('./assets/textures/player_0/nw.png'),
+        w:new THREE.ImageUtils.loadTexture('./assets/textures/player_0/w.png'),
+        sw:new THREE.ImageUtils.loadTexture('./assets/textures/player_0/sw.png')
     };
 
     this.animations = {
@@ -131,19 +130,14 @@ var Client = function(clientObj){
     
     this.velocity = new THREE.Vector3();
     
-    this.peers = new Object;
-    
     // Data needed for reconciliation.
     this.input_sequence_number = 0;
     this.pending_inputs = [];
     
-    // Client message queue.
-    this.queue = new Queue();
-    
         
 };
 
-Client.prototype.processInputs = function(){
+Client.prototype.processInputs = function(socket, delta){
     
     var input = new Object;
     input.input_sequence_number = this.input_sequence_number++;
@@ -180,68 +174,202 @@ Client.prototype.processInputs = function(){
     }
     
     input.quat = {
-        x:controls.getObject().quaternion.x,
-        y:controls.getObject().quaternion.y,
-        z:controls.getObject().quaternion.z,
-        w:controls.getObject().quaternion.w
+        x:this.obj.quaternion.x,
+        y:this.obj.quaternion.y,
+        z:this.obj.quaternion.z,
+        w:this.obj.quaternion.w
     };
     input.rot = {
-        x:controls.getObject().rotation.x,
-        y:controls.getObject().rotation.y,
-        z:controls.getObject().rotation.z
+        x:this.obj.rotation.x,
+        y:this.obj.rotation.y,
+        z:this.obj.rotation.z
     };
     
     // Send this input to the server for processing
     socket.emit('client_input', input);
     
     // Do client-side prediction.
-    this.applyInput(input);
+    this.applyInput(input, delta);
     
     // Save this input for later reconciliation.
     this.pending_inputs.push(input);
 
 };
 
-Client.prototype.applyInput = function(input){
+Client.prototype.applyInput = function(input, delta){
   
     if(input.jump){
         this.velocity.y += 350;
         this.jump = false;
     }
     
-    this.velocity.x -= this.velocity.x * 10.0 * deltaTime;
-    this.velocity.z -= this.velocity.z * 10.0 * deltaTime;
-    this.velocity.y -= 9.8 * 100.0 * deltaTime; // 100.0 = mass
+    this.velocity.x -= this.velocity.x * 10.0 * delta;
+    this.velocity.z -= this.velocity.z * 10.0 * delta;
+    this.velocity.y -= 9.8 * 100.0 * delta; // 100.0 = mass
 
-    if ( input.key_up ) this.velocity.z -= 400.0 * deltaTime;
-    if ( input.key_down ) this.velocity.z += 400.0 * deltaTime;
-    if ( input.key_left ) this.velocity.x -= 400.0 * deltaTime;
-    if ( input.key_right ) this.velocity.x += 400.0 * deltaTime;
+    if ( input.key_up ) this.velocity.z -= 400.0 * delta;
+    if ( input.key_down ) this.velocity.z += 400.0 * delta;
+    if ( input.key_left ) this.velocity.x -= 400.0 * delta;
+    if ( input.key_right ) this.velocity.x += 400.0 * delta;
 
-    controls.getObject().translateX( this.velocity.x * deltaTime );
-    controls.getObject().translateY( this.velocity.y * deltaTime );
-    controls.getObject().translateZ( this.velocity.z * deltaTime );
+    this.obj.translateX( this.velocity.x * delta );
+    this.obj.translateY( this.velocity.y * delta );
+    this.obj.translateZ( this.velocity.z * delta );
 
-    if ( controls.getObject().position.y < 10 ) {
+    if ( this.obj.position.y < 10 ) {
         this.velocity.y = 0;
-        controls.getObject().position.y = 10;
+        this.obj.position.y = 10;
     }
+        
+};
+
+Client.prototype.updatePosition = function(netObj){
+    
+    this.obj.position.x = netObj.position.x;
+    this.obj.position.y = netObj.position.y;
+    this.obj.position.z = netObj.position.z;
+    
+};
+
+
+
+</script>
+<script>
+// =============================================================================
+//  The World.
+// =============================================================================
+var World = function(){
+    
+    this.totalRunTime = 0.0;
+    this.deltaTime = 0.01;
+    this.currentTime = (+new Date()) / 1000.0;
+    this.accumulator = 0.0;
+    
+    this.queue = new Queue();
+    
+    this.peers = new Object;
+    
+    // Create camera object: PerspectiveCamera( fov, aspect, near, far )
+    this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
+    
+    // Create scene object, add fog to scene: Fog( hex, near, far )
+    this.scene = new THREE.Scene();
+    this.scene.fog = new THREE.Fog(0xffffff, 0, 750);
+    
+    // Create hemisphere light object, set it's position, add it to the scene: HemisphereLight(skyColorHex, groundColorHex, intensity)
+    this.light = new THREE.HemisphereLight(0xeeeeff, 0x777788, 0.75);
+    this.light.position.set(0.5, 1, 0.75);
+    this.scene.add(this.light);
+    
+    // Create the controls object, add it to the scene. This is the player object on the client.
+    this.controls = new THREE.PointerLockControls(this.camera);
+    this.scene.add(this.controls.getObject());
+    
+    // Create renderer and bind to dom
+    this.renderer = new THREE.WebGLRenderer();
+    this.renderer.setClearColor(0xffffff);
+    this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(this.renderer.domElement);
+    
+    // Add floor to scene. In the future I'm thinking we will have another object which defines
+    // a world map, and that object will be a property of this world "class". That sounds like
+    // it would make the loading of different maps simpler.    
+    this.floorTexture = new THREE.ImageUtils.loadTexture( './assets/textures/checkerboard.jpg' );
+    this.floorTexture.wrapS = this.floorTexture.wrapT = THREE.RepeatWrapping; 
+    this.floorTexture.repeat.set( 10, 10 );
+    this.floorMaterial = new THREE.MeshBasicMaterial( { map: this.floorTexture, side: THREE.DoubleSide } );
+    this.floorGeometry = new THREE.PlaneGeometry(1000, 1000, 10, 10);
+    this.floor = new THREE.Mesh(this.floorGeometry, this.floorMaterial);
+    this.floor.position.y = -0.5;
+    this.floor.rotation.x = Math.PI / 2;
+    this.scene.add(this.floor);
+    
+};
+
+World.prototype.render = function(){
+    
+    this.renderer.render(this.scene, this.camera);
+    
+};
+
+
+World.prototype.processServerUpdates = function(client) {
+  
+    while(true){
+     
+        var update = this.queue.receive();
+        
+        if(!update){
+            break;
+        }
+        
+        for(var id in update.payload){
+            
+            var server_state = update.payload[id];
+            
+            if(id === client.id){
+                
+                // Set user's current state equal to the state processed by the server
+                client.updatePosition(server_state);
+                
+                // Server Reconciliation. Re-apply all the inputs not yet processed by the server
+                var i = 0;
+                while(i < client.pending_inputs.length){
+                    
+                    var input = client.pending_inputs[i];
+                    if(input.input_sequence_number <= server_state.last_processed_input){
+                        
+                        // Already processed. Remove
+                        client.pending_inputs.splice(i, 1);
+                        
+                    } else {
+                        
+                        // Not processed by server yet. Re-apply.
+                        client.applyInput(input, this.deltaTime);
+                        i++;
+                        
+                    }
+                    
+                }
+                
+            } else { // This is a peer update
+                
+                world.peers[id].updatePosition(server_state);
+                
+            }
+            
+        }
+            
+    }
+        
+};
+
+World.prototype.disconnectPeer = function(peer_id){
+    
+    var selectedObject = this.scene.getObjectByName(this.peers[peer_id].billboard.name);
+    this.scene.remove(selectedObject);
+    
+    var selectedObject = this.scene.getObjectByName(this.peers[peer_id].mesh.name);
+    this.scene.remove(selectedObject);
+    
+    delete(this.peers[peer_id]);
         
 };
 
 // Find the position each player is facing relative to
 // the current player camera position and display the 
 // correct texture on the player billboard, animate texture
-Client.prototype.animatePeers = function(){
+World.prototype.animatePeers = function(client){
 
-    var animation_speed = 1000 * deltaTime;
+    var animation_speed = 1000 * this.deltaTime;
     
     for(var peer_id in this.peers){
         
         var peer = this.peers[peer_id];
         
         var view = new THREE.Vector3();
-        view.subVectors(controls.getObject().position, peer.mesh.position);
+        view.subVectors(client.obj.position, peer.mesh.position);
 
         var inverse = peer.mesh.quaternion.clone();
         inverse.inverse();
@@ -291,137 +419,9 @@ Client.prototype.animatePeers = function(){
             peer.animations.ne.update(animation_speed);
         }
 
-        peer.billboard.lookAt(controls.getObject().position);
+        peer.billboard.lookAt(client.obj.position);
 
     }
-};
-
-Client.prototype.updatePosition = function(netObj){
-    
-    client.obj.position.x = netObj.position.x;
-    client.obj.position.y = netObj.position.y;
-    client.obj.position.z = netObj.position.z;
-    
-};
-
-Client.prototype.disconnectPeer = function(id){
-    
-    var selectedObject = scene.getObjectByName(this.peers[id].billboard.name);
-    scene.remove(selectedObject);
-    
-    var selectedObject = scene.getObjectByName(this.peers[id].mesh.name);
-    scene.remove(selectedObject);
-    
-    delete(this.peers[id]);
-        
-};
-
-Client.prototype.processServerUpdates = function(){
-    while(true){
-     
-        var update = this.queue.receive();
-        
-        if(!update){
-            break;
-        }
-        
-        for(var id in update.payload){
-            
-            var server_state = update.payload[id];
-            
-            if(id === this.id){ // This message pertains to the client object
-                
-                // Set user's current state equal to the state processed by the server
-                this.updatePosition(server_state);
-                
-                // Server Reconciliation. Re-apply all the inputs not yet processed by the server
-                var i = 0;
-                while(i < this.pending_inputs.length){
-                    
-                    var input = this.pending_inputs[i];
-                    if(input.input_sequence_number <= server_state.last_processed_input){
-                        
-                        // Already processed. Remove
-                        this.pending_inputs.splice(i, 1);
-                        
-                    } else {
-                        
-                        // Not processed by server yet. Re-apply.
-                        this.applyInput(input);
-                        i++;
-                        
-                    }
-                    
-                }
-                
-            } else { // This is a peer update
-                
-                this.peers[id].updatePosition(server_state);
-                
-            }
-            
-        }
-            
-    }        
-};
-
-Client.prototype.update = function(){
-    
-    this.processServerUpdates();
-    this.processInputs();
-    this.animatePeers();
-
-};
-
-</script>
-<script>
-// =============================================================================
-//  The World.
-// =============================================================================
-var World = function(){
-    
-    this.totalRunTime = 0.0;
-    this.deltaTime = 0.01;
-    this.currentTime = (+new Date()) / 1000.0;
-    this.accumulator = 0.0;
-    
-    // Create camera object: PerspectiveCamera( fov, aspect, near, far )
-    this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
-    
-    // Create scene object, add fog to scene: Fog( hex, near, far )
-    this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.Fog(0xffffff, 0, 750);
-    
-    // Create hemisphere light object, set it's position, add it to the scene: HemisphereLight(skyColorHex, groundColorHex, intensity)
-    this.light = new THREE.HemisphereLight(0xeeeeff, 0x777788, 0.75);
-    this.light.position.set(0.5, 1, 0.75);
-    this.scene.add(this.light);
-    
-    // Create the controls object, add it to the scene. This is the player object on the client.
-    this.controls = new THREE.PointerLockControls(this.camera);
-    this.scene.add(this.controls.getObject());
-    
-    // Create renderer and bind to dom
-    this.renderer = new THREE.WebGLRenderer();
-    this.renderer.setClearColor(0xffffff);
-    this.renderer.setPixelRatio(window.devicePixelRatio);
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(this.renderer.domElement);
-    
-    // Add floor to scene. In the future I'm thinking we will have another object which defines
-    // a world map, and that object will be a property of this world "class". That sounds like
-    // it would make the loading of different maps simpler.
-    this.floor_geometry = new THREE.PlaneGeometry(2000, 2000, 100, 100);
-    this.floor_material = new THREE.MeshBasicMaterial({color:0x336600});
-    this.floor_mesh = new THREE.Mesh(this.floor_geometry, this.floor_material);
-    this.scene.add(this.floor_mesh);
-    
-};
-
-World.prototype.render = function(){
-    
-    this.renderer.render(this.scene, this.camera);
-    
 };
 </script>
 <script>
@@ -452,7 +452,9 @@ World.prototype.render = function(){
             world.accumulator += frameTime;
             while(world.accumulator >= world.deltaTime){
 
-                client.update();
+                world.processServerUpdates(client);
+                client.processInputs(socket, world.deltaTime);
+                world.animatePeers(client);                
 
                 world.totalRunTime += world.deltaTime;
                 world.accumulator -= world.deltaTime;       
@@ -474,24 +476,24 @@ World.prototype.render = function(){
     
     socket.on('new_player_connection', function(netObj){
         if(netObj.id !== client.id){
-            client.peers[netObj.id] = new Peer(netObj);
+            world.peers[netObj.id] = new Peer(world.scene, netObj);
         }
     });
     
     socket.on('connected_players', function(netObj){
         for(var id in netObj){
             if(id !== client.id){
-                client.peers[id] = new Peer(netObj[id]);
+                world.peers[id] = new Peer(world.scene, netObj[id]);
             }
         }
     });
     
     socket.on('player_disconnect', function(id){
-        client.disconnectPeer(id);
+        world.disconnectPeer(id);
     });
     
     socket.on('server_state', function(server_state){
-        client.queue.send(server_state);
+        world.queue.send(server_state);
     });
 
     // This function is used to test various things. It is run whenever the enter button
@@ -504,9 +506,9 @@ World.prototype.render = function(){
 </script>
 
         
-<script src="/src/verify_pointerlock.js"></script>
-<script src="/src/key_controls.js"></script>
-<script src="/src/window_resize.js"></script>
+<script src="./src/verify_pointerlock.js"></script>
+<script src="./src/key_controls.js"></script>
+<script src="./src/window_resize.js"></script>
         
 </body>
 </html>
