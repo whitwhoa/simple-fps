@@ -1,14 +1,18 @@
 // http://www.html5rocks.com/en/tutorials/pointerlock/intro/
+var blocker = document.getElementById( 'blocker' ),
+instructions = document.getElementById( 'instructions' ),
+controlsEnabled = false;
+
 var havePointerLock = 'pointerLockElement' in document || 'mozPointerLockElement' in document || 'webkitPointerLockElement' in document;
 if ( havePointerLock ) {
         var element = document.body;
         var pointerlockchange = function ( event ) {
                 if ( document.pointerLockElement === element || document.mozPointerLockElement === element || document.webkitPointerLockElement === element ) {
                         controlsEnabled = true;
-                        controls.enabled = true;
+                        world.controls.enabled = true;
                         blocker.style.display = 'none';
                 } else {
-                        controls.enabled = false;
+                        world.controls.enabled = false;
                         blocker.style.display = '-webkit-box';
                         blocker.style.display = '-moz-box';
                         blocker.style.display = 'box';

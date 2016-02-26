@@ -24,10 +24,11 @@
 
         <script src="/libs/three.js"></script>
         <script src="/libs/PointerLockControls.js"></script>
+        <script src="/libs/TextureAnimator.js"></script>
         
         
-        <script src="/src/verify_pointerlock.js"></script>
-        <script src="/src/TextureAnimator.js"></script>
+        
+        
 <script>
 // =============================================================================
 //  Message queue.
@@ -117,9 +118,10 @@ Peer.prototype.updatePosition = function(netObj){
 // =============================================================================
 //  The Client.
 // =============================================================================
-var Client = function(){
+var Client = function(clientObj){
   
     this.id = null;
+    this.obj = clientObj;
     
     this.key_left = false;
     this.key_right = false;
@@ -296,9 +298,9 @@ Client.prototype.animatePeers = function(){
 
 Client.prototype.updatePosition = function(netObj){
     
-    controls.getObject().position.x = netObj.position.x;
-    controls.getObject().position.y = netObj.position.y;
-    controls.getObject().position.z = netObj.position.z;
+    client.obj.position.x = netObj.position.x;
+    client.obj.position.y = netObj.position.y;
+    client.obj.position.z = netObj.position.z;
     
 };
 
@@ -373,71 +375,67 @@ Client.prototype.update = function(){
 
 </script>
 <script>
+// =============================================================================
+//  The World.
+// =============================================================================
+var World = function(){
     
-    // =============================================================================
-    //  Globals
-    // =============================================================================
-    var camera, 
-    scene, 
-    renderer,
-    controls,
-    blocker = document.getElementById( 'blocker' ),
-    instructions = document.getElementById( 'instructions' ),
-    controlsEnabled = false,
-    runTime = 0.0,
-    deltaTime = 0.01,
-    currentTime = (+new Date()) / 1000.0,
-    accumulator = 0.0;
+    this.totalRunTime = 0.0;
+    this.deltaTime = 0.01;
+    this.currentTime = (+new Date()) / 1000.0;
+    this.accumulator = 0.0;
     
     // Create camera object: PerspectiveCamera( fov, aspect, near, far )
-    camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
-
+    this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
+    
     // Create scene object, add fog to scene: Fog( hex, near, far )
-    scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0xffffff, 0, 750);
-
+    this.scene = new THREE.Scene();
+    this.scene.fog = new THREE.Fog(0xffffff, 0, 750);
+    
     // Create hemisphere light object, set it's position, add it to the scene: HemisphereLight(skyColorHex, groundColorHex, intensity)
-    var light = new THREE.HemisphereLight(0xeeeeff, 0x777788, 0.75);
-    light.position.set(0.5, 1, 0.75);
-    scene.add(light);
+    this.light = new THREE.HemisphereLight(0xeeeeff, 0x777788, 0.75);
+    this.light.position.set(0.5, 1, 0.75);
+    this.scene.add(this.light);
     
     // Create the controls object, add it to the scene. This is the player object on the client.
-    controls = new THREE.PointerLockControls(camera);
-    scene.add(controls.getObject());
-
-
-    // Add floor to scene
-    var floor_geometry = new THREE.PlaneGeometry( 2000, 2000, 100, 100 );
-    floor_geometry.rotateX( - Math.PI / 2 );
-    for (var i = 0, l = floor_geometry.vertices.length; i < l; i ++) {
-        var vertex = floor_geometry.vertices[ i ];
-        vertex.x += Math.random() * 20 - 10;
-        vertex.y += Math.random() * 2;
-        vertex.z += Math.random() * 20 - 10;
-    }
-    for (var i = 0, l = floor_geometry.faces.length; i < l; i ++) {
-        var face = floor_geometry.faces[ i ];
-        face.vertexColors[ 0 ] = new THREE.Color().setHSL( Math.random() * 0.3 + 0.5, 0.75, Math.random() * 0.25 + 0.75 );
-        face.vertexColors[ 1 ] = new THREE.Color().setHSL( Math.random() * 0.3 + 0.5, 0.75, Math.random() * 0.25 + 0.75 );
-        face.vertexColors[ 2 ] = new THREE.Color().setHSL( Math.random() * 0.3 + 0.5, 0.75, Math.random() * 0.25 + 0.75 );
-    }
-    var floor_material = new THREE.MeshBasicMaterial({vertexColors: THREE.VertexColors});
-    var floor_mesh = new THREE.Mesh(floor_geometry, floor_material);
-    scene.add(floor_mesh);
+    this.controls = new THREE.PointerLockControls(this.camera);
+    this.scene.add(this.controls.getObject());
     
-
-    // Create renderer
-    renderer = new THREE.WebGLRenderer();
-    renderer.setClearColor(0xffffff);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(renderer.domElement);
-
-
-    // Create client, socket, and socket events
-    var client = new Client();
-    var socket = io('http://local.three.js:3000');//change the domain to yours
+    // Create renderer and bind to dom
+    this.renderer = new THREE.WebGLRenderer();
+    this.renderer.setClearColor(0xffffff);
+    this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(this.renderer.domElement);
     
+    // Add floor to scene. In the future I'm thinking we will have another object which defines
+    // a world map, and that object will be a property of this world "class". That sounds like
+    // it would make the loading of different maps simpler.
+    this.floor_geometry = new THREE.PlaneGeometry(2000, 2000, 100, 100);
+    this.floor_material = new THREE.MeshBasicMaterial({color:0x336600});
+    this.floor_mesh = new THREE.Mesh(this.floor_geometry, this.floor_material);
+    this.scene.add(this.floor_mesh);
+    
+};
+
+World.prototype.render = function(){
+    
+    this.renderer.render(this.scene, this.camera);
+    
+};
+</script>
+<script>
+    
+    // Initialize our world
+    var world = new World();
+    
+    // Initialize client object
+    var client = new Client(world.controls.getObject());
+    
+    // Connect to server initializing the socket object
+    var socket = io('http://local.three.js:3000');
+    
+    // Server events
     socket.on('successful_connection', function(netObj){
         
         client.id = netObj.id;
@@ -445,7 +443,31 @@ Client.prototype.update = function(){
 
         // Run the main game loop as fast as we can
         setInterval(function(){
-            mainLoop();
+            
+            var newTime = (+new Date()) / 1000.0;
+            var frameTime = ((newTime - world.currentTime) > 0.25) ? 0.25 : (newTime - world.currentTime);
+            world.currentTime = newTime;
+
+            // Physics/Game logic 
+            world.accumulator += frameTime;
+            while(world.accumulator >= world.deltaTime){
+
+                client.update();
+
+                world.totalRunTime += world.deltaTime;
+                world.accumulator -= world.deltaTime;       
+
+            }
+
+            // Interpolate client object to remove the stuttering caused by
+            // unpredictable number of physics loops
+
+            // Interpolate peer positions
+
+            // Render world
+            world.render();
+            
+            
         }, 0);
 
     });
@@ -471,37 +493,6 @@ Client.prototype.update = function(){
     socket.on('server_state', function(server_state){
         client.queue.send(server_state);
     });
-    
-    // Main game loop
-    function mainLoop(){  
-        
-        var newTime = (+new Date()) / 1000.0;
-        var frameTime = ((newTime - currentTime) > 0.25) ? 0.25 : (newTime - currentTime);
-        currentTime = newTime;
-        
-        // Physics/Game logic 
-        accumulator += frameTime;
-        while(accumulator >= deltaTime){
-
-            client.update();
-
-            runTime += deltaTime;
-            accumulator -= deltaTime;       
-
-        }
-        
-        // Render stuff and such
-        
-        // Interpolate client object to remove the stuttering caused by
-        // unpredictable number of physics loops
-        
-        // Interpolate peer positions
-
-        
-        renderer.render(scene, camera);
-        
-    }
-        
 
     // This function is used to test various things. It is run whenever the enter button
     // is pressed
@@ -511,8 +502,9 @@ Client.prototype.update = function(){
         
     }
 </script>
-        
 
+        
+<script src="/src/verify_pointerlock.js"></script>
 <script src="/src/key_controls.js"></script>
 <script src="/src/window_resize.js"></script>
         
